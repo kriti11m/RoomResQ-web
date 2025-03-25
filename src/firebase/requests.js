@@ -43,13 +43,13 @@ export const submitMaintenanceRequest = async (formData) => {
       time: dateTime.toISOString(), // Full date and time
       category: formData.listType,
       image: imageData ? imageData.split(',')[1] : null, // Extract base64 content without prefix
-      email: userProfile.email // Include user email from profile
+      
     };
     
     console.log('Sending maintenance request:', requestPayload);
     
-    // Send request to maintenance endpoint with email as request parameter
-    const response = await fetch(`http://172.18.219.69:8081/api/maintenance?email=${encodeURIComponent(userProfile.email)}`, {
+    // Send maintenance request with email as a request parameter
+    const maintenanceResponse = await fetch(`http://localhost:8081/api/maintenance?email=${encodeURIComponent(userProfile.email)}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -57,15 +57,15 @@ export const submitMaintenanceRequest = async (formData) => {
       },
       body: JSON.stringify(requestPayload)
     });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
+
+    if (!maintenanceResponse.ok) {
+      const errorData = await maintenanceResponse.json();
       throw new Error(errorData.message || 'Failed to submit maintenance request');
     }
-    
-    const result = await response.json();
-    console.log('Maintenance request submitted successfully:', result);
-    return result;
+
+    const maintenanceResult = await maintenanceResponse.json();
+    console.log('Maintenance request submitted successfully:', maintenanceResult);
+    return maintenanceResult;
   } catch (error) {
     console.error('Error submitting maintenance request:', error);
     throw error;

@@ -24,7 +24,7 @@ export const AuthProvider = ({ children }) => {
       if (user) {
         try {
           // Check if user exists in backend
-          const response = await fetch(`http://172.18.219.69:8081/api/user/${user.uid}`, {
+          const response = await fetch(`http://localhost:8081/api/user/${user.uid}`, {
             method: 'GET',
             headers: {
               'Accept': 'application/json'
@@ -72,7 +72,7 @@ export const AuthProvider = ({ children }) => {
       const idToken = await user.getIdToken();
       
       // Send token to backend for authentication and user creation
-      const response = await fetch('http://172.18.219.69:8081/api/auth/google-signin', {
+      const response = await fetch('http://localhost:8081/api/auth/google-signin', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

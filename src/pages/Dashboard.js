@@ -64,7 +64,7 @@ const Dashboard = () => {
       }
 
       // Only fetch from backend if profile is completed
-      const response = await fetch(`http://172.18.219.69:8081/api/user/${user.uid}`, {
+      const response = await fetch(`http://localhost:8081/api/user/${user.uid}`, {
         method: 'GET',
         headers: {
           'Accept': 'application/json'
@@ -250,7 +250,7 @@ const Dashboard = () => {
       };
 
       // Use the completeprofile endpoint for updates
-      const response = await fetch('http://172.18.219.69:8081/api/user/completeprofile', {
+      const response = await fetch('http://localhost:8081/api/user/completeprofile', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
