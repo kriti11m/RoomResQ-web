@@ -1,11 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { submitMaintenanceRequest } from '../firebase/requests';
 import Header from '../components/Header';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../firebase/auth';
 
 const MaintenanceRequest = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
   const [formData, setFormData] = useState({
     issueType: '',
     description: '',
@@ -14,6 +18,51 @@ const MaintenanceRequest = () => {
     listType: '',
     proof: null
   });
+
+  // Check if user profile is completed
+  useEffect(() => {
+    // Check both localStorage flag and actual profile data
+    const userProfileString = localStorage.getItem('userProfile');
+    
+    // Only show alert if we can't find profile data at all
+    if (!userProfileString && user) {
+      setError('Please complete your profile before submitting a maintenance request.');
+      setTimeout(() => {
+        navigate('/dashboard');
+      }, 2000);
+      return;
+    }
+    
+    try {
+      // Verify we have at least the basic required fields
+      if (userProfileString) {
+        const userProfile = JSON.parse(userProfileString);
+        const hasRequiredFields = userProfile.name && 
+                                 userProfile.email && 
+                                 userProfile.regNo && 
+                                 userProfile.phonenumber;
+                                 
+        if (!hasRequiredFields && user) {
+          const missingFields = [];
+          if (!userProfile.name) missingFields.push('Name');
+          if (!userProfile.email) missingFields.push('Email');
+          if (!userProfile.regNo) missingFields.push('Registration Number');
+          if (!userProfile.phonenumber) missingFields.push('Phone Number');
+          
+          setError(`Please complete your profile with all required fields: ${missingFields.join(', ')}`);
+          setTimeout(() => {
+            navigate('/dashboard');
+          }, 2000);
+        }
+      }
+    } catch (e) {
+      console.error('Error parsing profile data:', e);
+      setError('Error checking profile data. Please try again.');
+      setTimeout(() => {
+        navigate('/dashboard');
+      }, 2000);
+    }
+  }, [user, navigate, setError]);
 
   const issueTypes = [
     'Electrical',
@@ -37,20 +86,57 @@ const MaintenanceRequest = () => {
       ...prev,
       [name]: value
     }));
+    // Clear any previous errors when user makes changes
+    setError('');
   };
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
+      // Check file size (5MB limit)
+      if (file.size > 5 * 1024 * 1024) {
+        setError('File size exceeds 5MB limit. Please choose a smaller file.');
+        return;
+      }
+      
       setFormData(prev => ({
         ...prev,
         proof: file
       }));
+      setError('');
     }
+  };
+
+  const validateForm = () => {
+    // Validate required fields
+    if (!formData.issueType) return 'Please select an issue type';
+    if (!formData.description) return 'Please provide a description';
+    if (!formData.urgencyLevel) return 'Please select an urgency level';
+    if (!formData.preferredDateTime) return 'Please select a preferred date and time';
+    if (!formData.listType) return 'Please select a request category';
+    
+    // Check if the date is in the future
+    const selectedDate = new Date(formData.preferredDateTime);
+    if (selectedDate < new Date()) {
+      return 'Please select a future date and time';
+    }
+    
+    return null;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // Validate form
+    const validationError = validateForm();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    
+    setIsLoading(true);
+    setError('');
+    
     try {
       await submitMaintenanceRequest(formData);
       alert('Request submitted successfully!');
@@ -62,10 +148,12 @@ const MaintenanceRequest = () => {
         listType: '',
         proof: null
       });
-      navigate('/dashboard');
+      navigate('/request-status');
     } catch (error) {
       console.error('Error submitting request:', error);
-      alert('Error submitting request. Please try again.');
+      setError(error.message || 'Error submitting request. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -111,6 +199,24 @@ const MaintenanceRequest = () => {
           >
             Submit Maintenance Request
           </motion.h2>
+
+          {error && (
+            <motion.div 
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              style={{
+                padding: '1rem',
+                marginBottom: '2rem',
+                backgroundColor: 'rgba(255, 50, 50, 0.1)',
+                border: '1px solid rgba(255, 50, 50, 0.3)',
+                borderRadius: '8px',
+                color: '#ff6b6b',
+                textAlign: 'center'
+              }}
+            >
+              {error}
+            </motion.div>
+          )}
 
           <form onSubmit={handleSubmit} style={{ maxWidth: '800px', margin: '0 auto' }}>
             <div className="form-group" style={{ marginBottom: '2rem' }}>
@@ -209,10 +315,10 @@ const MaintenanceRequest = () => {
                   }}
                 >
                   <option value="">Select Urgency Level</option>
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                  <option value="urgent">Urgent</option>
+                  <option value="LOW">Low</option>
+                  <option value="MEDIUM">Medium</option>
+                  <option value="HIGH">High</option>
+                  <option value="URGENT">Urgent</option>
                 </select>
               </div>
 
@@ -301,7 +407,7 @@ const MaintenanceRequest = () => {
               }}>
                 <input
                   type="file"
-                  accept=".pdf,.doc,.docx,.jpg,.jpeg"
+                  accept="image/*"
                   onChange={handleFileChange}
                   style={{ display: 'none' }}
                   id="proof"
@@ -311,32 +417,44 @@ const MaintenanceRequest = () => {
                     <span style={{ color: 'var(--primary-light)' }}>{formData.proof.name}</span>
                   ) : (
                     <span style={{ color: 'var(--light)' }}>
-                      Click to upload file (PDF, DOC, JPG)
+                      Click to upload image (JPG, PNG)
                     </span>
                   )}
                 </label>
+              </div>
+              <div style={{ 
+                marginTop: '0.5rem', 
+                fontSize: '0.85rem', 
+                color: 'var(--light)', 
+                textAlign: 'right' 
+              }}>
+                Max file size: 5MB
               </div>
             </div>
 
             <motion.button
               type="submit"
+              disabled={isLoading}
               className="btn-primary"
               style={{
                 width: '100%',
                 padding: '1rem',
                 borderRadius: '12px',
                 border: 'none',
-                background: 'linear-gradient(135deg, var(--primary), var(--primary-light))',
+                background: isLoading 
+                  ? 'linear-gradient(135deg, #666, #888)' 
+                  : 'linear-gradient(135deg, var(--primary), var(--primary-light))',
                 color: 'white',
                 fontSize: '1.1rem',
                 fontWeight: '600',
-                cursor: 'pointer',
-                transition: 'all 0.3s ease'
+                cursor: isLoading ? 'not-allowed' : 'pointer',
+                transition: 'all 0.3s ease',
+                position: 'relative'
               }}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
+              whileHover={{ scale: isLoading ? 1 : 1.02 }}
+              whileTap={{ scale: isLoading ? 1 : 0.98 }}
             >
-              Submit Request
+              {isLoading ? 'Submitting...' : 'Submit Request'}
             </motion.button>
           </form>
         </motion.div>

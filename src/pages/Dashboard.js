@@ -177,6 +177,35 @@ const Dashboard = () => {
     };
   }, [user]);
 
+  // Set profileCompleted flag if valid profile exists but flag isn't set
+  useEffect(() => {
+    if (user?.uid) {
+      const profileCompletedFlag = localStorage.getItem('profileCompleted');
+      const userProfileString = localStorage.getItem('userProfile');
+      
+      // If we have a profile but the flag isn't set, check if it has required fields
+      if (userProfileString && profileCompletedFlag !== 'true') {
+        try {
+          const userProfile = JSON.parse(userProfileString);
+          if (userProfile.firebaseUid === user.uid &&
+              userProfile.name && 
+              userProfile.email && 
+              userProfile.regNo && 
+              userProfile.phonenumber && 
+              userProfile.hostelType && 
+              userProfile.block && 
+              userProfile.roomNo) {
+            // Set the flag if all required fields are present
+            localStorage.setItem('profileCompleted', 'true');
+            console.log('Profile completion flag set based on existing profile data');
+          }
+        } catch (error) {
+          console.error('Error checking profile completion:', error);
+        }
+      }
+    }
+  }, [user]);
+
   const handleSignOut = async () => {
     try {
       await signOut();
