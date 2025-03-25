@@ -21,7 +21,7 @@ export const submitMaintenanceRequest = async (requestData) => {
     // Add user ID
     formData.append('userId', auth.currentUser.uid);
 
-    const response = await fetch('http://localhost:8081/api/maintenance/submit', {
+    const response = await fetch('http://172.18.219.69:8081/api/maintenance/submit', {
       method: 'POST',
       body: formData
     });
