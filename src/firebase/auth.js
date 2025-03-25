@@ -3,11 +3,9 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
   signOut as firebaseSignOut,
-  onAuthStateChanged,
-  updateProfile
+  onAuthStateChanged
 } from 'firebase/auth';
-import { auth, db } from './config';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { auth } from './config';
 
 const AuthContext = createContext();
 
@@ -18,10 +16,38 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [hasProfile, setHasProfile] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setUser(user);
+      if (user) {
+        try {
+          // Check if user exists in backend
+          const response = await fetch(`http://localhost:8081/api/user/${user.uid}`, {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json'
+            }
+          });
+
+          if (response.ok) {
+            const userData = await response.json();
+            localStorage.setItem('userProfile', JSON.stringify(userData));
+            setHasProfile(true);
+          } else {
+            localStorage.removeItem('userProfile');
+            setHasProfile(false);
+          }
+        } catch (error) {
+          console.error('Error checking user:', error);
+          localStorage.removeItem('userProfile');
+          setHasProfile(false);
+        }
+      } else {
+        localStorage.removeItem('userProfile');
+        setHasProfile(false);
+      }
       setLoading(false);
     });
 
@@ -30,34 +56,55 @@ export const AuthProvider = ({ children }) => {
 
   const signInWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
-    
-    // Configure the Google provider
     provider.setCustomParameters({
-      prompt: 'select_account' // This will show the account selector every time
+      prompt: 'select_account'
     });
 
     try {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
       
-      // Check if the email is from VIT domain (both staff and student emails)
       if (!user.email.endsWith('@vit.ac.in') && !user.email.endsWith('@vitstudent.ac.in')) {
         await firebaseSignOut(auth);
         throw new Error('Please use your VIT email address (@vit.ac.in or @vitstudent.ac.in)');
       }
 
-      // Check if user profile exists in Firestore
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
-      if (!userDoc.exists()) {
-        await setDoc(doc(db, 'users', user.uid), {
-          email: user.email,
-          displayName: user.displayName,
-          photoURL: user.photoURL,
-          createdAt: new Date().toISOString()
-        });
+      const idToken = await user.getIdToken();
+      
+      // Send token to backend for authentication and user creation
+      const response = await fetch('http://localhost:8081/api/auth/google-signin', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ idToken })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.error('Backend authentication failed:', errorData);
+        await firebaseSignOut(auth);
+        throw new Error('Backend authentication failed');
       }
 
-      return user;
+      const responseData = await response.json();
+      const userData = responseData.user; // Extract user data from response
+
+      // Store basic profile data
+      const basicProfile = {
+        firebaseUid: userData.firebaseUid || user.uid,
+        email: userData.email || user.email,
+        name: userData.name || user.displayName,
+        photoUrl: userData.photoUrl || user.photoURL
+      };
+      localStorage.setItem('userProfile', JSON.stringify(basicProfile));
+
+      // Check if profile is complete
+      const isNewUser = !userData.regNo || !userData.phonenumber || !userData.block || !userData.roomNo;
+      setHasProfile(!isNewUser);
+
+      return { user, isNewUser };
     } catch (error) {
       console.error('Error signing in with Google:', error);
       throw error;
@@ -65,35 +112,17 @@ export const AuthProvider = ({ children }) => {
   };
 
   const signOut = () => {
+    localStorage.removeItem('userProfile');
+    setHasProfile(false);
     return firebaseSignOut(auth);
-  };
-
-  const updateUserProfile = async (profileData) => {
-    if (!user) throw new Error('No user logged in');
-
-    try {
-      // Update Firestore user profile
-      await setDoc(doc(db, 'users', user.uid), {
-        ...profileData,
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
-
-      // Update Firebase Auth profile
-      await updateProfile(auth.currentUser, {
-        displayName: profileData.fullName
-      });
-    } catch (error) {
-      console.error('Error updating profile:', error);
-      throw error;
-    }
   };
 
   const value = {
     user,
     loading,
+    hasProfile,
     signInWithGoogle,
-    signOut,
-    updateUserProfile
+    signOut
   };
 
   return (

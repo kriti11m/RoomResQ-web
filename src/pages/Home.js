@@ -34,8 +34,12 @@ function Home() {
     setIsLoading(true);
     setError('');
     try {
-      await signInWithGoogle();
-      navigate('/profile');
+      const { user, isNewUser } = await signInWithGoogle();
+      if (isNewUser) {
+        navigate('/profile');
+      } else {
+        navigate('/dashboard');
+      }
     } catch (error) {
       console.error('Sign in error:', error);
       setError(error.message || 'Failed to sign in. Please try again.');

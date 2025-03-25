@@ -1,22 +1,18 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
 
 // Your web app's Firebase configuration
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-  apiKey: "AIzaSyCqReqTU8QtIPKTkW-E-VmEzPGeHGDho8s",
-  authDomain: "roomresq.firebaseapp.com",
-  projectId: "roomresq",
-  storageBucket: "roomresq.firebasestorage.app",
-  messagingSenderId: "60931557033",
-  appId: "1:60931557033:web:705e0146027dbd762b8bb8",
-  measurementId: "G-VFDDGHMJEX"
+  apiKey: "AIzaSyC-MZcXqCDOFcu31JnUXfyTi2fqfTM8Lrs",
+  authDomain: "roomresq-73635.firebaseapp.com",
+  projectId: "roomresq-73635",
+  storageBucket: "roomresq-73635.firebasestorage.app",
+  messagingSenderId: "119094862262",
+  appId: "1:119094862262:web:453cb25dcbf64121ac6117",
+  measurementId: "G-7NJRNP0HR0"
 };
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export const db = getFirestore(app);
-export const storage = getStorage(app); 
+export const auth = getAuth(app); 

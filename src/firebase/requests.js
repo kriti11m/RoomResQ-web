@@ -1,29 +1,38 @@
-import { collection, addDoc, query, where, getDocs, orderBy, serverTimestamp } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage, auth } from './config';
+import { auth } from './config';
 
 export const submitMaintenanceRequest = async (requestData) => {
   if (!auth.currentUser) throw new Error('No user logged in');
 
   try {
-    let proofUrl = null;
+    let formData = new FormData();
+    
+    // Add all request data
+    Object.keys(requestData).forEach(key => {
+      if (key !== 'proof') {
+        formData.append(key, requestData[key]);
+      }
+    });
+
+    // Add the proof file if it exists
     if (requestData.proof) {
-      const storageRef = ref(storage, `proofs/${auth.currentUser.uid}/${requestData.proof.name}`);
-      await uploadBytes(storageRef, requestData.proof);
-      proofUrl = await getDownloadURL(storageRef);
+      formData.append('proof', requestData.proof);
     }
 
-    const request = {
-      ...requestData,
-      proofUrl,
-      userId: auth.currentUser.uid,
-      status: 'pending',
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    };
+    // Add user ID
+    formData.append('userId', auth.currentUser.uid);
 
-    const docRef = await addDoc(collection(db, 'maintenance_requests'), request);
-    return { id: docRef.id, ...request };
+    const response = await fetch('http://localhost:8081/api/maintenance/submit', {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      throw new Error(errorData || 'Failed to submit maintenance request');
+    }
+
+    const result = await response.json();
+    return result;
   } catch (error) {
     throw error;
   }
@@ -33,19 +42,20 @@ export const getUserRequests = async () => {
   if (!auth.currentUser) throw new Error('No user logged in');
 
   try {
-    const q = query(
-      collection(db, 'maintenance_requests'),
-      where('userId', '==', auth.currentUser.uid),
-      orderBy('createdAt', 'desc')
-    );
+    const response = await fetch(`http://localhost:8081/api/maintenance/user/${auth.currentUser.uid}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
 
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      createdAt: doc.data().createdAt?.toDate(),
-      updatedAt: doc.data().updatedAt?.toDate()
-    }));
+    if (!response.ok) {
+      const errorData = await response.text();
+      throw new Error(errorData || 'Failed to fetch maintenance requests');
+    }
+
+    const requests = await response.json();
+    return requests;
   } catch (error) {
     throw error;
   }
