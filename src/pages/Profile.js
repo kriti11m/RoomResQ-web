@@ -63,7 +63,7 @@ const Profile = () => {
         throw new Error(`Please fill in all required fields: ${missingFields.join(', ')}`);
       }
 
-      const response = await fetch('http://localhost:8081/api/user/completeprofile', {
+      const response = await fetch('http://172.18.219.69:8081/api/user/completeprofile', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

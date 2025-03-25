@@ -8,6 +8,8 @@ function Home() {
   const navigate = useNavigate();
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  // eslint-disable-next-line no-unused-vars
+  const { user } = useAuth();
 
   // Add animation to feature items when they come into view
   useEffect(() => {

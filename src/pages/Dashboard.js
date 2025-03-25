@@ -5,7 +5,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 const Dashboard = () => {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [profileData, setProfileData] = useState(null);
+  const [editedProfile, setEditedProfile] = useState(null);
   const { user, signOut } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
@@ -14,9 +16,12 @@ const Dashboard = () => {
     try {
       if (!user?.uid) return;
 
+      // Check if profile is already completed
+      const isProfileCompleted = localStorage.getItem('profileCompleted') === 'true';
+      
       // Try to get profile from localStorage first
       const storedProfile = localStorage.getItem('userProfile');
-      if (storedProfile) {
+      if (storedProfile && isProfileCompleted) {
         const parsedProfile = JSON.parse(storedProfile);
         console.log('Loaded stored profile:', parsedProfile);
         if (parsedProfile.firebaseUid === user.uid) {
@@ -25,9 +30,41 @@ const Dashboard = () => {
         }
       }
 
-      // If no valid profile in localStorage or it doesn't match current user,
-      // fetch from backend
-      const response = await fetch(`http://localhost:8081/api/user/${user.uid}`, {
+      // If profile isn't completed yet or doesn't match user, show minimal data
+      if (!isProfileCompleted) {
+        console.log('Profile not completed yet, showing minimal data');
+        setProfileData({
+          firebaseUid: user.uid,
+          name: user.displayName || '',
+          email: user.email,
+          regNo: '',
+          phonenumber: '',
+          hostelType: '',
+          block: '',
+          roomNo: ''
+        });
+        
+        // Automatically open edit profile modal for new users
+        if (!storedProfile) {
+          setTimeout(() => {
+            setEditedProfile({
+              firebaseUid: user.uid,
+              name: user.displayName || '',
+              email: user.email,
+              regNo: '',
+              phonenumber: '',
+              hostelType: '',
+              block: '',
+              roomNo: ''
+            });
+            setIsEditModalOpen(true);
+          }, 500);
+        }
+        return;
+      }
+
+      // Only fetch from backend if profile is completed
+      const response = await fetch(`http://172.18.219.69:8081/api/user/${user.uid}`, {
         method: 'GET',
         headers: {
           'Accept': 'application/json'
@@ -37,8 +74,43 @@ const Dashboard = () => {
       if (response.ok) {
         const userData = await response.json();
         console.log('Fetched profile from backend:', userData);
-        localStorage.setItem('userProfile', JSON.stringify(userData));
-        setProfileData(userData);
+        
+        // Check if profile has all required fields
+        if (userData.regNo && userData.phonenumber && userData.hostelType && userData.block && userData.roomNo) {
+          localStorage.setItem('userProfile', JSON.stringify(userData));
+          localStorage.setItem('profileCompleted', 'true');
+          setProfileData(userData);
+        } else {
+          // If backend profile is incomplete, prompt user to complete it
+          setProfileData({
+            firebaseUid: user.uid,
+            name: user.displayName || userData.name || '',
+            email: user.email,
+            regNo: userData.regNo || '',
+            phonenumber: userData.phonenumber || '',
+            hostelType: userData.hostelType || '',
+            block: userData.block || '',
+            roomNo: userData.roomNo || ''
+          });
+          
+          // Show edit modal if profile is incomplete
+          setTimeout(() => {
+            setEditedProfile({
+              firebaseUid: user.uid,
+              name: user.displayName || userData.name || '',
+              email: user.email,
+              regNo: userData.regNo || '',
+              phonenumber: userData.phonenumber || '',
+              hostelType: userData.hostelType || '',
+              block: userData.block || '',
+              roomNo: userData.roomNo || ''
+            });
+            setIsEditModalOpen(true);
+          }, 500);
+        }
+      } else if (response.status === 404) {
+        // If user not found, keep minimal data
+        console.log('User not found in backend');
       } else {
         console.error('Failed to fetch profile data');
       }
@@ -49,8 +121,10 @@ const Dashboard = () => {
 
   // Load profile when component mounts or user changes
   useEffect(() => {
-    loadProfile();
-  }, [loadProfile]);
+    if (user?.uid) {
+      loadProfile();
+    }
+  }, [user, loadProfile]);
 
   // Listen for localStorage changes and profile updates
   useEffect(() => {
@@ -107,10 +181,83 @@ const Dashboard = () => {
     try {
       await signOut();
       localStorage.removeItem('userProfile');
+      localStorage.removeItem('profileCompleted');
       setProfileData(null);
       navigate('/');
     } catch (error) {
       console.error('Error signing out:', error);
+    }
+  };
+
+  const handleEditProfile = () => {
+    setEditedProfile({ ...profileData });
+    setIsEditModalOpen(true);
+    setIsProfileMenuOpen(false);
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setEditedProfile(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleSaveProfile = async () => {
+    try {
+      // Validate required fields
+      if (!editedProfile.name || !editedProfile.email || !editedProfile.regNo || 
+          !editedProfile.phonenumber || !editedProfile.hostelType || 
+          !editedProfile.block || !editedProfile.roomNo) {
+        alert('All fields are required to complete your profile');
+        return;
+      }
+
+      // Prepare the profile data for update
+      const updatedProfileData = {
+        ...editedProfile,
+        firebaseUid: user.uid,
+        email: user.email // Ensure email matches Firebase user
+      };
+
+      // Use the completeprofile endpoint for updates
+      const response = await fetch('http://172.18.219.69:8081/api/user/completeprofile', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(updatedProfileData)
+      });
+
+      if (response.ok) {
+        const updatedProfile = await response.json();
+        console.log('Profile updated successfully:', updatedProfile);
+        
+        // Set profile as completed and store the data
+        localStorage.setItem('profileCompleted', 'true');
+        localStorage.setItem('userProfile', JSON.stringify(updatedProfile));
+        setProfileData(updatedProfile);
+        setIsEditModalOpen(false);
+        
+        // Dispatch custom event for same-tab updates
+        window.dispatchEvent(new CustomEvent('localStorageUpdated', {
+          detail: { key: 'userProfile', value: updatedProfile }
+        }));
+
+        // Show success message
+        alert('Profile completed successfully!');
+        
+        // Force reload the page to ensure everything is updated
+        window.location.reload();
+      } else {
+        const errorData = await response.json();
+        console.error('Failed to update profile:', errorData);
+        alert(errorData.message || 'Failed to complete profile. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      alert('An error occurred while completing your profile. Please try again.');
     }
   };
 
@@ -259,30 +406,45 @@ const Dashboard = () => {
                     <div style={{ color: 'var(--white)', marginBottom: '0.75rem' }}>
                       <strong>Email:</strong> {profileData.email}
                     </div>
-                    {profileData.regNo && (
-                      <div style={{ color: 'var(--white)', marginBottom: '0.75rem' }}>
-                        <strong>Registration No:</strong> {profileData.regNo}
-                      </div>
-                    )}
-                    {profileData.phonenumber && (
-                      <div style={{ color: 'var(--white)', marginBottom: '0.75rem' }}>
-                        <strong>Phone:</strong> {profileData.phonenumber}
-                      </div>
-                    )}
-                    {profileData.hostelType && (
-                      <div style={{ color: 'var(--white)', marginBottom: '0.75rem' }}>
-                        <strong>Hostel:</strong> {profileData.hostelType}
-                      </div>
-                    )}
-                    {profileData.block && profileData.roomNo && (
-                      <div style={{ color: 'var(--white)' }}>
-                        <strong>Room:</strong> {profileData.block}-{profileData.roomNo}
-                      </div>
-                    )}
+                    <div style={{ color: 'var(--white)', marginBottom: '0.75rem' }}>
+                      <strong>Registration No:</strong> {profileData.regNo || 'Not set'}
+                    </div>
+                    <div style={{ color: 'var(--white)', marginBottom: '0.75rem' }}>
+                      <strong>Phone:</strong> {profileData.phonenumber || 'Not set'}
+                    </div>
+                    <div style={{ color: 'var(--white)', marginBottom: '0.75rem' }}>
+                      <strong>Hostel:</strong> {profileData.hostelType || 'Not set'}
+                    </div>
+                    <div style={{ color: 'var(--white)' }}>
+                      <strong>Room:</strong> {(profileData.block && profileData.roomNo) ? `${profileData.block}-${profileData.roomNo}` : 'Not set'}
+                    </div>
                   </div>
                 )}
                 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <button
+                    onClick={handleEditProfile}
+                    style={{
+                      padding: '0.75rem 1rem',
+                      backgroundColor: 'rgba(147, 51, 234, 0.1)',
+                      color: 'var(--primary)',
+                      border: '1px solid var(--primary)',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      transition: 'all 0.3s ease',
+                      fontWeight: 'bold'
+                    }}
+                    onMouseOver={(e) => {
+                      e.target.style.backgroundColor = 'var(--primary)';
+                      e.target.style.color = 'var(--white)';
+                    }}
+                    onMouseOut={(e) => {
+                      e.target.style.backgroundColor = 'rgba(147, 51, 234, 0.1)';
+                      e.target.style.color = 'var(--primary)';
+                    }}
+                  >
+                    Edit Profile
+                  </button>
                   <button
                     onClick={handleSignOut}
                     style={{
@@ -312,6 +474,166 @@ const Dashboard = () => {
           </AnimatePresence>
         </div>
       </header>
+
+      {/* Edit Profile Modal */}
+      <AnimatePresence>
+        {isEditModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 1001
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              style={{
+                backgroundColor: 'var(--dark-light)',
+                padding: '2rem',
+                borderRadius: '12px',
+                width: '90%',
+                maxWidth: '500px',
+                maxHeight: '90vh',
+                overflowY: 'auto',
+                border: '1px solid rgba(147, 51, 234, 0.2)'
+              }}
+            >
+              <h2 style={{ color: 'var(--white)', marginBottom: '1.5rem' }}>Edit Profile</h2>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div>
+                  <label style={{ color: 'var(--light)', display: 'block', marginBottom: '0.5rem' }}>Name</label>
+                  <input
+                    type="text"
+                    name="name"
+                    value={editedProfile?.name || ''}
+                    onChange={handleInputChange}
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      backgroundColor: 'var(--dark)',
+                      border: '1px solid rgba(147, 51, 234, 0.2)',
+                      borderRadius: '6px',
+                      color: 'var(--white)'
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ color: 'var(--light)', display: 'block', marginBottom: '0.5rem' }}>Phone Number</label>
+                  <input
+                    type="tel"
+                    name="phonenumber"
+                    value={editedProfile?.phonenumber || ''}
+                    onChange={handleInputChange}
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      backgroundColor: 'var(--dark)',
+                      border: '1px solid rgba(147, 51, 234, 0.2)',
+                      borderRadius: '6px',
+                      color: 'var(--white)'
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ color: 'var(--light)', display: 'block', marginBottom: '0.5rem' }}>Hostel Type</label>
+                  <input
+                    type="text"
+                    name="hostelType"
+                    value={editedProfile?.hostelType || ''}
+                    onChange={handleInputChange}
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      backgroundColor: 'var(--dark)',
+                      border: '1px solid rgba(147, 51, 234, 0.2)',
+                      borderRadius: '6px',
+                      color: 'var(--white)'
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ color: 'var(--light)', display: 'block', marginBottom: '0.5rem' }}>Block</label>
+                  <input
+                    type="text"
+                    name="block"
+                    value={editedProfile?.block || ''}
+                    onChange={handleInputChange}
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      backgroundColor: 'var(--dark)',
+                      border: '1px solid rgba(147, 51, 234, 0.2)',
+                      borderRadius: '6px',
+                      color: 'var(--white)'
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ color: 'var(--light)', display: 'block', marginBottom: '0.5rem' }}>Room Number</label>
+                  <input
+                    type="text"
+                    name="roomNo"
+                    value={editedProfile?.roomNo || ''}
+                    onChange={handleInputChange}
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      backgroundColor: 'var(--dark)',
+                      border: '1px solid rgba(147, 51, 234, 0.2)',
+                      borderRadius: '6px',
+                      color: 'var(--white)'
+                    }}
+                  />
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
+                <button
+                  onClick={() => setIsEditModalOpen(false)}
+                  style={{
+                    padding: '0.75rem 1.5rem',
+                    backgroundColor: 'transparent',
+                    color: 'var(--light)',
+                    border: '1px solid var(--light)',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s ease',
+                    flex: 1
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveProfile}
+                  style={{
+                    padding: '0.75rem 1.5rem',
+                    backgroundColor: 'var(--primary)',
+                    color: 'var(--white)',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s ease',
+                    flex: 1
+                  }}
+                >
+                  Save Changes
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div style={{ display: 'flex', minHeight: 'calc(100vh - 64px)' }}>
         <nav style={{
