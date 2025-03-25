@@ -63,7 +63,7 @@ const Profile = () => {
         throw new Error(`Please fill in all required fields: ${missingFields.join(', ')}`);
       }
 
-      const response = await fetch('http://localhost:8081/api/completeprofile', {
+      const response = await fetch('http://localhost:8081/api/user/completeprofile', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -73,20 +73,28 @@ const Profile = () => {
           ...formData,
           email: user.email,
           name: user.displayName,
-          photoUrl: user.photoURL
+          photoUrl: user.photoURL,
+          firebaseUid: user.uid
         }),
       });
 
+      const responseData = await response.json();
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to complete profile');
+        throw new Error(responseData.error || 'Failed to complete profile');
       }
 
-      const updatedProfile = await response.json();
+      console.log('Profile updated:', responseData);
       
-      // Store the complete profile data in localStorage
-      localStorage.setItem('userProfile', JSON.stringify(updatedProfile));
-
+      // Store the complete profile data in localStorage and dispatch custom event
+      localStorage.setItem('userProfile', JSON.stringify(responseData));
+      window.dispatchEvent(new CustomEvent('localStorageUpdated', {
+        detail: {
+          key: 'userProfile',
+          value: responseData
+        }
+      }));
+      
       navigate('/dashboard');
     } catch (error) {
       console.error('Error completing profile:', error);

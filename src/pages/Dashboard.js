@@ -10,48 +10,104 @@ const Dashboard = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
+  const loadProfile = React.useCallback(async () => {
+    try {
+      if (!user?.uid) return;
+
+      // Try to get profile from localStorage first
+      const storedProfile = localStorage.getItem('userProfile');
+      if (storedProfile) {
+        const parsedProfile = JSON.parse(storedProfile);
+        console.log('Loaded stored profile:', parsedProfile);
+        if (parsedProfile.firebaseUid === user.uid) {
+          setProfileData(parsedProfile);
+          return;
+        }
+      }
+
+      // If no valid profile in localStorage or it doesn't match current user,
+      // fetch from backend
+      const response = await fetch(`http://localhost:8081/api/user/${user.uid}`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const userData = await response.json();
+        console.log('Fetched profile from backend:', userData);
+        localStorage.setItem('userProfile', JSON.stringify(userData));
+        setProfileData(userData);
+      } else {
+        console.error('Failed to fetch profile data');
+      }
+    } catch (error) {
+      console.error('Error loading profile:', error);
+    }
+  }, [user]);
+
+  // Load profile when component mounts or user changes
   useEffect(() => {
-    const loadProfile = async () => {
-      try {
-        // Try to get profile from localStorage first
-        const storedProfile = localStorage.getItem('userProfile');
-        if (storedProfile) {
-          const parsedProfile = JSON.parse(storedProfile);
-          if (parsedProfile.firebaseUid === user?.uid) {
-            setProfileData(parsedProfile);
-            return;
-          }
-        }
+    loadProfile();
+  }, [loadProfile]);
 
-        // If no valid profile in localStorage, fetch from backend
-        if (user?.uid) {
-          const response = await fetch(`http://localhost:8081/api/user/${user.uid}`, {
-            method: 'GET',
-            headers: {
-              'Accept': 'application/json'
-            }
-          });
-
-          if (response.ok) {
-            const userData = await response.json();
-            localStorage.setItem('userProfile', JSON.stringify(userData));
-            setProfileData(userData);
+  // Listen for localStorage changes and profile updates
+  useEffect(() => {
+    const handleStorageChange = (event) => {
+      if (event.key === 'userProfile' && event.newValue) {
+        try {
+          const newProfile = JSON.parse(event.newValue);
+          if (newProfile && newProfile.firebaseUid === user?.uid) {
+            console.log('Profile updated from storage event:', newProfile);
+            setProfileData(newProfile);
           }
+        } catch (error) {
+          console.error('Error parsing profile data from storage event:', error);
         }
-      } catch (error) {
-        console.error('Error loading profile:', error);
       }
     };
 
-    if (user) {
-      loadProfile();
+    // Listen for storage events from other tabs/windows
+    window.addEventListener('storage', handleStorageChange);
+
+    // Create a custom event listener for same-tab updates
+    const handleCustomStorageEvent = (event) => {
+      if (event.detail && event.detail.key === 'userProfile') {
+        const newProfile = event.detail.value;
+        if (newProfile && newProfile.firebaseUid === user?.uid) {
+          console.log('Profile updated from custom event:', newProfile);
+          setProfileData(newProfile);
+        }
+      }
+    };
+
+    window.addEventListener('localStorageUpdated', handleCustomStorageEvent);
+
+    // Initial load from localStorage
+    const storedProfile = localStorage.getItem('userProfile');
+    if (storedProfile) {
+      try {
+        const parsedProfile = JSON.parse(storedProfile);
+        if (parsedProfile.firebaseUid === user?.uid) {
+          setProfileData(parsedProfile);
+        }
+      } catch (error) {
+        console.error('Error parsing stored profile:', error);
+      }
     }
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('localStorageUpdated', handleCustomStorageEvent);
+    };
   }, [user]);
 
   const handleSignOut = async () => {
     try {
       await signOut();
       localStorage.removeItem('userProfile');
+      setProfileData(null);
       navigate('/');
     } catch (error) {
       console.error('Error signing out:', error);
@@ -132,7 +188,7 @@ const Dashboard = () => {
                   {profileData?.name || user?.displayName || 'User'}
                 </div>
                 <div style={{ fontSize: '0.8rem', opacity: 0.8, color: 'var(--light)' }}>
-                  {profileData?.block ? `${profileData.block} - ${profileData.roomNo}` : profileData?.email}
+                  {profileData?.regNo || profileData?.email}
                 </div>
               </div>
             </div>
@@ -203,18 +259,26 @@ const Dashboard = () => {
                     <div style={{ color: 'var(--white)', marginBottom: '0.75rem' }}>
                       <strong>Email:</strong> {profileData.email}
                     </div>
-                    <div style={{ color: 'var(--white)', marginBottom: '0.75rem' }}>
-                      <strong>Registration No:</strong> {profileData.regNo}
-                    </div>
-                    <div style={{ color: 'var(--white)', marginBottom: '0.75rem' }}>
-                      <strong>Phone:</strong> {profileData.phonenumber}
-                    </div>
-                    <div style={{ color: 'var(--white)', marginBottom: '0.75rem' }}>
-                      <strong>Hostel:</strong> {profileData.hostelType}
-                    </div>
-                    <div style={{ color: 'var(--white)' }}>
-                      <strong>Room:</strong> {profileData.block}-{profileData.roomNo}
-                    </div>
+                    {profileData.regNo && (
+                      <div style={{ color: 'var(--white)', marginBottom: '0.75rem' }}>
+                        <strong>Registration No:</strong> {profileData.regNo}
+                      </div>
+                    )}
+                    {profileData.phonenumber && (
+                      <div style={{ color: 'var(--white)', marginBottom: '0.75rem' }}>
+                        <strong>Phone:</strong> {profileData.phonenumber}
+                      </div>
+                    )}
+                    {profileData.hostelType && (
+                      <div style={{ color: 'var(--white)', marginBottom: '0.75rem' }}>
+                        <strong>Hostel:</strong> {profileData.hostelType}
+                      </div>
+                    )}
+                    {profileData.block && profileData.roomNo && (
+                      <div style={{ color: 'var(--white)' }}>
+                        <strong>Room:</strong> {profileData.block}-{profileData.roomNo}
+                      </div>
+                    )}
                   </div>
                 )}
                 
