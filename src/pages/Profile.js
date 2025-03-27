@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 
 const Profile = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, hasProfile } = useAuth();
   const [formData, setFormData] = useState({
     firebaseUid: user?.uid || '',
     email: user?.email || '',
@@ -16,24 +16,35 @@ const Profile = () => {
     block: '',
     regNo: ''
   });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  // Redirect to dashboard if user already has a profile
+  useEffect(() => {
+    if (hasProfile) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [hasProfile, navigate]);
 
   // Load existing profile data if available
   useEffect(() => {
+    if (!user) return;
+
     const storedProfile = localStorage.getItem('userProfile');
     if (storedProfile) {
-      const profile = JSON.parse(storedProfile);
-      if (profile.firebaseUid === user?.uid) {
-        // Pre-fill any existing data
-        setFormData(prevData => ({
-          ...prevData,
-          ...profile
-        }));
+      try {
+        const profile = JSON.parse(storedProfile);
+        if (profile.firebaseUid === user.uid) {
+          setFormData(prevData => ({
+            ...prevData,
+            ...profile
+          }));
+        }
+      } catch (error) {
+        console.error('Error parsing stored profile:', error);
       }
     }
   }, [user]);
-
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
 
   const hostelTypes = ['Boys Hostel', 'Girls Hostel'];
   const blocks = [
@@ -63,7 +74,7 @@ const Profile = () => {
         throw new Error(`Please fill in all required fields: ${missingFields.join(', ')}`);
       }
 
-      const response = await fetch('http://localhost:8081/api/user/completeprofile', {
+      const response = await fetch('http://172.18.218.136:8081/api/user/completeprofile', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -84,18 +95,19 @@ const Profile = () => {
         throw new Error(responseData.error || 'Failed to complete profile');
       }
 
-      console.log('Profile updated:', responseData);
-      
-      // Store the complete profile data in localStorage and dispatch custom event
+      // Store the complete profile data in localStorage
       localStorage.setItem('userProfile', JSON.stringify(responseData));
+      
+      // Dispatch event to update profile status
       window.dispatchEvent(new CustomEvent('localStorageUpdated', {
         detail: {
           key: 'userProfile',
           value: responseData
         }
       }));
-      
-      navigate('/dashboard');
+
+      // Force a page reload to ensure all states are updated
+      window.location.href = '/dashboard';
     } catch (error) {
       console.error('Error completing profile:', error);
       setError(error.message || 'Failed to complete profile. Please try again.');

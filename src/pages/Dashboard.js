@@ -64,7 +64,7 @@ const Dashboard = () => {
       }
 
       // Only fetch from backend if profile is completed
-      const response = await fetch(`http://localhost:8081/api/user/${user.uid}`, {
+      const response = await fetch(`http://172.18.218.136:8081/api/user/${user.uid}`, {
         method: 'GET',
         headers: {
           'Accept': 'application/json'
@@ -122,7 +122,107 @@ const Dashboard = () => {
   // Load profile when component mounts or user changes
   useEffect(() => {
     if (user?.uid) {
-      loadProfile();
+      // Always fetch the latest profile data from the backend
+      const fetchLatestProfile = async () => {
+        try {
+          // First, let's make sure we have a local fallback
+          const localFallback = {
+            firebaseUid: user.uid,
+            name: user.displayName || '',
+            email: user.email || '',
+            photoUrl: user.photoURL || '',
+            regNo: '',
+            phonenumber: '',
+            hostelType: '',
+            block: '',
+            roomNo: ''
+          };
+          
+          console.log('Firebase user photo URL:', user.photoURL);
+          
+          const response = await fetch(`http://172.18.218.136:8081/api/user/${user.uid}`, {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json'
+            }
+          });
+          
+          if (response.ok) {
+            let userData = await response.json();
+            console.log('Fetched profile from backend on mount:', userData);
+            
+            // Check if photo URL exists in Firebase but not in backend data
+            if ((!userData.photoUrl || userData.photoUrl === "null" || userData.photoUrl === "undefined") && user.photoURL) {
+              console.log('Adding missing photo URL from Firebase:', user.photoURL);
+              
+              // Update our local user data first
+              userData.photoUrl = user.photoURL;
+              
+              // Update the backend with the photo URL
+              try {
+                const updateResponse = await fetch('http://172.18.218.136:8081/api/user/completeprofile', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                  },
+                  body: JSON.stringify({
+                    ...userData,
+                    photoUrl: user.photoURL,
+                    firebaseUid: user.uid,
+                    email: user.email,
+                    name: user.displayName
+                  })
+                });
+                
+                if (updateResponse.ok) {
+                  userData = await updateResponse.json();
+                  console.log('Updated backend with photo URL:', userData);
+                  
+                  // Double check the response contains the photo
+                  if (!userData.photoUrl && user.photoURL) {
+                    userData.photoUrl = user.photoURL;
+                  }
+                }
+              } catch (updateError) {
+                console.error('Error updating photo URL in backend:', updateError);
+                // Still use the photo URL from Firebase even if backend update fails
+                userData.photoUrl = user.photoURL;
+              }
+            }
+            
+            // Ensure we have a photo URL if it's available from Firebase
+            if ((!userData.photoUrl || userData.photoUrl === "null" || userData.photoUrl === "undefined") && user.photoURL) {
+              userData.photoUrl = user.photoURL;
+            }
+            
+            console.log('Final user data with photo:', userData);
+            
+            // Update profile data state with the latest data
+            setProfileData(userData);
+            
+            // Store in localStorage
+            localStorage.setItem('userProfile', JSON.stringify(userData));
+            localStorage.setItem('profileCompleted', 'true');
+          } else {
+            // Fallback to loadProfile if backend fetch fails
+            console.log('Backend fetch failed, falling back to stored data');
+            
+            // Set minimal profile data while we wait for loadProfile
+            setProfileData(prevData => ({
+              ...prevData,
+              ...localFallback
+            }));
+            
+            loadProfile();
+          }
+        } catch (error) {
+          console.error('Error fetching profile on mount:', error);
+          loadProfile();
+        }
+      };
+      
+      fetchLatestProfile();
     }
   }, [user, loadProfile]);
 
@@ -218,8 +318,65 @@ const Dashboard = () => {
     }
   };
 
-  const handleEditProfile = () => {
-    setEditedProfile({ ...profileData });
+  const handleEditProfile = async () => {
+    try {
+      // Fetch the latest profile data from the backend before editing
+      if (user?.uid) {
+        const response = await fetch(`http://172.18.218.136:8081/api/user/${user.uid}`, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json'
+          }
+        });
+
+        if (response.ok) {
+          const latestUserData = await response.json();
+          console.log('Fetched fresh profile data:', latestUserData);
+          
+          // Ensure photoUrl is set from Firebase if missing in backend
+          if ((!latestUserData.photoUrl || latestUserData.photoUrl === "null" || latestUserData.photoUrl === "undefined") && user.photoURL) {
+            console.log('Setting photo URL from Firebase in edit data:', user.photoURL);
+            latestUserData.photoUrl = user.photoURL;
+          }
+          
+          // Update profileData state with the latest data
+          setProfileData(latestUserData);
+          
+          // Store in localStorage
+          localStorage.setItem('userProfile', JSON.stringify(latestUserData));
+          
+          // Set up edit form with the latest data
+          setEditedProfile(latestUserData);
+        } else {
+          console.warn('Could not fetch latest profile data, using existing data');
+          const updatedProfileData = { 
+            ...profileData,
+            photoUrl: profileData?.photoUrl || user?.photoURL 
+          };
+          console.log('Using existing data with photo:', updatedProfileData);
+          setEditedProfile(updatedProfileData);
+        }
+      } else {
+        // Fallback to existing data if user ID is not available
+        const updatedProfileData = { 
+          ...profileData,
+          photoUrl: profileData?.photoUrl || user?.photoURL 
+        };
+        console.log('No user ID, using existing data with photo:', updatedProfileData);
+        setEditedProfile(updatedProfileData);
+      }
+    } catch (error) {
+      console.error('Error fetching latest profile data:', error);
+      // Fallback to existing data
+      const updatedProfileData = { 
+        ...profileData,
+        photoUrl: profileData?.photoUrl || user?.photoURL 
+      };
+      console.log('Error occurred, using existing data with photo:', updatedProfileData);
+      setEditedProfile(updatedProfileData);
+    }
+    
+    // Open the edit modal and close the profile menu
     setIsEditModalOpen(true);
     setIsProfileMenuOpen(false);
   };
@@ -235,22 +392,30 @@ const Dashboard = () => {
   const handleSaveProfile = async () => {
     try {
       // Validate required fields
-      if (!editedProfile.name || !editedProfile.email || !editedProfile.regNo || 
-          !editedProfile.phonenumber || !editedProfile.hostelType || 
-          !editedProfile.block || !editedProfile.roomNo) {
-        alert('All fields are required to complete your profile');
+      const requiredFields = ['name', 'email', 'regNo', 'phonenumber', 'hostelType', 'block', 'roomNo'];
+      const missingFields = requiredFields.filter(field => !editedProfile[field]);
+      
+      if (missingFields.length > 0) {
+        alert(`Please fill in all required fields: ${missingFields.join(', ')}`);
         return;
       }
+
+      // Always ensure we have the photo URL from Firebase if it's not in the edited profile
+      const photoUrl = editedProfile.photoUrl || user.photoURL || '';
 
       // Prepare the profile data for update
       const updatedProfileData = {
         ...editedProfile,
         firebaseUid: user.uid,
-        email: user.email // Ensure email matches Firebase user
+        email: user.email, // Ensure email matches Firebase user
+        name: user.displayName, // Ensure name matches Firebase user
+        photoUrl: photoUrl // Ensure photo URL is included
       };
 
-      // Use the completeprofile endpoint for updates
-      const response = await fetch('http://localhost:8081/api/user/completeprofile', {
+      console.log('Sending profile update with data:', updatedProfileData);
+
+      // Send update request to the backend
+      const response = await fetch('http://172.18.218.136:8081/api/user/completeprofile', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -259,34 +424,36 @@ const Dashboard = () => {
         body: JSON.stringify(updatedProfileData)
       });
 
-      if (response.ok) {
-        const updatedProfile = await response.json();
-        console.log('Profile updated successfully:', updatedProfile);
-        
-        // Set profile as completed and store the data
-        localStorage.setItem('profileCompleted', 'true');
-        localStorage.setItem('userProfile', JSON.stringify(updatedProfile));
-        setProfileData(updatedProfile);
-        setIsEditModalOpen(false);
-        
-        // Dispatch custom event for same-tab updates
-        window.dispatchEvent(new CustomEvent('localStorageUpdated', {
-          detail: { key: 'userProfile', value: updatedProfile }
-        }));
-
-        // Show success message
-        alert('Profile completed successfully!');
-        
-        // Force reload the page to ensure everything is updated
-        window.location.reload();
-      } else {
+      if (!response.ok) {
         const errorData = await response.json();
-        console.error('Failed to update profile:', errorData);
-        alert(errorData.message || 'Failed to complete profile. Please try again.');
+        throw new Error(errorData.message || 'Failed to update profile');
       }
+
+      const updatedProfile = await response.json();
+      
+      // Ensure we still have the photo URL in the updated profile
+      if (!updatedProfile.photoUrl && photoUrl) {
+        updatedProfile.photoUrl = photoUrl;
+      }
+      
+      // Update local storage and state
+      localStorage.setItem('userProfile', JSON.stringify(updatedProfile));
+      localStorage.setItem('profileCompleted', 'true');
+      
+      // Update the UI state directly
+      setProfileData(updatedProfile);
+      setIsEditModalOpen(false);
+      
+      // Dispatch custom event for same-tab updates
+      window.dispatchEvent(new CustomEvent('localStorageUpdated', {
+        detail: { key: 'userProfile', value: updatedProfile }
+      }));
+
+      // Show success message
+      alert('Profile updated successfully!');
     } catch (error) {
       console.error('Error updating profile:', error);
-      alert('An error occurred while completing your profile. Please try again.');
+      alert(error.message || 'An error occurred while updating your profile. Please try again.');
     }
   };
 
@@ -327,20 +494,39 @@ const Dashboard = () => {
             className="profile-button"
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              {profileData?.photoUrl ? (
+              {(profileData?.photoUrl || user?.photoURL) ? (
                 <img 
-                  src={profileData.photoUrl} 
+                  src={profileData?.photoUrl || user?.photoURL} 
                   alt="Profile" 
                   style={{ 
                     width: '32px', 
                     height: '32px', 
                     borderRadius: '50%',
                     border: '2px solid var(--primary)',
-                    objectFit: 'cover'
+                    objectFit: 'cover',
+                    backgroundColor: 'var(--primary-light)'
                   }} 
                   onError={(e) => {
                     console.error('Image load error:', e.target.src);
+                    // Instead of hiding the image, replace with fallback
                     e.target.style.display = 'none';
+                    // Create fallback initial
+                    const parent = e.target.parentNode;
+                    if (parent) {
+                      const fallback = document.createElement('div');
+                      fallback.style.width = '32px';
+                      fallback.style.height = '32px';
+                      fallback.style.borderRadius = '50%';
+                      fallback.style.backgroundColor = 'var(--primary)';
+                      fallback.style.display = 'flex';
+                      fallback.style.alignItems = 'center';
+                      fallback.style.justifyContent = 'center';
+                      fallback.style.color = 'white';
+                      fallback.style.fontSize = '16px';
+                      fallback.style.fontWeight = 'bold';
+                      fallback.innerText = profileData?.name?.charAt(0) || user?.displayName?.charAt(0) || 'U';
+                      parent.insertBefore(fallback, e.target);
+                    }
                   }}
                 />
               ) : (
@@ -397,9 +583,9 @@ const Dashboard = () => {
                     paddingBottom: '1rem'
                   }}>
                     <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-                      {profileData.photoUrl ? (
+                      {(profileData.photoUrl || user?.photoURL) ? (
                         <img 
-                          src={profileData.photoUrl} 
+                          src={profileData.photoUrl || user?.photoURL} 
                           alt="Profile" 
                           style={{ 
                             width: '80px', 
@@ -407,8 +593,33 @@ const Dashboard = () => {
                             borderRadius: '50%',
                             border: '3px solid var(--primary)',
                             objectFit: 'cover',
-                            boxShadow: '0 2px 8px rgba(147, 51, 234, 0.2)'
+                            boxShadow: '0 2px 8px rgba(147, 51, 234, 0.2)',
+                            backgroundColor: 'var(--primary-light)'
                           }} 
+                          onError={(e) => {
+                            console.error('Image load error in dropdown:', e.target.src);
+                            // Instead of hiding the image, replace with fallback
+                            e.target.style.display = 'none';
+                            // Create fallback initial
+                            const parent = e.target.parentNode;
+                            if (parent) {
+                              const fallback = document.createElement('div');
+                              fallback.style.width = '80px';
+                              fallback.style.height = '80px';
+                              fallback.style.borderRadius = '50%';
+                              fallback.style.backgroundColor = 'var(--primary)';
+                              fallback.style.display = 'flex';
+                              fallback.style.alignItems = 'center';
+                              fallback.style.justifyContent = 'center';
+                              fallback.style.color = 'white';
+                              fallback.style.fontSize = '32px';
+                              fallback.style.fontWeight = 'bold';
+                              fallback.style.margin = '0 auto';
+                              fallback.style.boxShadow = '0 2px 8px rgba(147, 51, 234, 0.2)';
+                              fallback.innerText = profileData.name?.charAt(0) || user?.displayName?.charAt(0) || 'U';
+                              parent.insertBefore(fallback, e.target);
+                            }
+                          }}
                         />
                       ) : (
                         <div style={{
@@ -425,7 +636,7 @@ const Dashboard = () => {
                           margin: '0 auto',
                           boxShadow: '0 2px 8px rgba(147, 51, 234, 0.2)'
                         }}>
-                          {profileData.name?.charAt(0) || 'U'}
+                          {profileData.name?.charAt(0) || user?.displayName?.charAt(0) || 'U'}
                         </div>
                       )}
                     </div>
@@ -721,18 +932,98 @@ const Dashboard = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
+            style={{ 
+              height: '100%',
+              display: 'flex',
+              alignItems: 'flex-start',
+              justifyContent: 'center',
+              paddingTop: '3rem'
+            }}
           >
             <div style={{ 
               backgroundColor: 'var(--dark-light)',
               borderRadius: '12px',
               padding: '2rem',
               boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
-              border: '1px solid rgba(147, 51, 234, 0.2)'
+              border: '1px solid rgba(147, 51, 234, 0.2)',
+              maxWidth: '600px',
+              width: '100%',
+              textAlign: 'center'
             }}>
-              <h2 style={{ color: 'var(--white)', marginBottom: '2rem' }}>Welcome to RoomResQ</h2>
-              <p style={{ color: 'var(--light)', lineHeight: '1.6' }}>
+              <h2 style={{ 
+                color: 'var(--white)', 
+                marginBottom: '1.5rem', 
+                fontSize: '2rem',
+                fontWeight: '600',
+                background: 'linear-gradient(90deg, #ffffff, var(--primary-light))',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text'
+              }}>
+                Welcome to RoomResQ
+              </h2>
+              <p style={{ 
+                color: 'var(--light)', 
+                lineHeight: '1.6',
+                fontSize: '1.1rem',
+                marginBottom: '1.5rem'
+              }}>
                 Manage your maintenance requests and track their status from this dashboard.
               </p>
+              <div style={{
+                marginTop: '2rem',
+                display: 'flex',
+                justifyContent: 'center',
+                gap: '1rem'
+              }}>
+                <Link
+                  to="/maintenance-request"
+                  style={{
+                    padding: '0.75rem 1.5rem',
+                    backgroundColor: 'var(--primary)',
+                    color: 'white',
+                    textDecoration: 'none',
+                    borderRadius: '6px',
+                    fontWeight: '500',
+                    transition: 'all 0.3s ease',
+                    display: 'inline-block'
+                  }}
+                  onMouseOver={(e) => {
+                    e.target.style.backgroundColor = 'var(--primary-light)';
+                    e.target.style.transform = 'translateY(-2px)';
+                  }}
+                  onMouseOut={(e) => {
+                    e.target.style.backgroundColor = 'var(--primary)';
+                    e.target.style.transform = 'translateY(0)';
+                  }}
+                >
+                  Create New Request
+                </Link>
+                <Link
+                  to="/request-status"
+                  style={{
+                    padding: '0.75rem 1.5rem',
+                    backgroundColor: 'transparent',
+                    color: 'var(--light)',
+                    textDecoration: 'none',
+                    borderRadius: '6px',
+                    border: '1px solid var(--primary)',
+                    fontWeight: '500',
+                    transition: 'all 0.3s ease',
+                    display: 'inline-block'
+                  }}
+                  onMouseOver={(e) => {
+                    e.target.style.backgroundColor = 'rgba(147, 51, 234, 0.1)';
+                    e.target.style.transform = 'translateY(-2px)';
+                  }}
+                  onMouseOut={(e) => {
+                    e.target.style.backgroundColor = 'transparent';
+                    e.target.style.transform = 'translateY(0)';
+                  }}
+                >
+                  View Request Status
+                </Link>
+              </div>
             </div>
           </motion.div>
         </main>

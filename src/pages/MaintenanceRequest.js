@@ -138,17 +138,37 @@ const MaintenanceRequest = () => {
     setError('');
     
     try {
-      await submitMaintenanceRequest(formData);
-      alert('Request submitted successfully!');
-      setFormData({
-        issueType: '',
-        description: '',
-        urgencyLevel: '',
-        preferredDateTime: '',
-        listType: '',
-        proof: null
-      });
-      navigate('/request-status');
+      const result = await submitMaintenanceRequest(formData);
+      
+      // Check if the result contains a ticket ID
+      if (result && result.ticketid) {
+        alert('Request submitted successfully!');
+        
+        // Reset form data
+        setFormData({
+          issueType: '',
+          description: '',
+          urgencyLevel: '',
+          preferredDateTime: '',
+          listType: '',
+          proof: null
+        });
+        
+        // Navigate to request details page
+        navigate(`/request/${result.ticketid}`);
+      } else {
+        // Fallback to request status page if no ticket ID is returned
+        alert('Request submitted successfully!');
+        setFormData({
+          issueType: '',
+          description: '',
+          urgencyLevel: '',
+          preferredDateTime: '',
+          listType: '',
+          proof: null
+        });
+        navigate('/request-status');
+      }
     } catch (error) {
       console.error('Error submitting request:', error);
       setError(error.message || 'Error submitting request. Please try again.');

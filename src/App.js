@@ -6,16 +6,34 @@ import Profile from './pages/Profile';
 import Dashboard from './pages/Dashboard';
 import MaintenanceRequest from './pages/MaintenanceRequest';
 import RequestStatus from './pages/RequestStatus';
+import RequestDetails from './pages/RequestDetails';
+import AdminDashboard from './components/admin/AdminDashboard';
+import AuthRoute from './components/AuthRoute';
 import './App.css';
 
-const PrivateRoute = ({ children }) => {
+const AdminRoute = ({ children }) => {
   const { user, loading } = useAuth();
   
   if (loading) {
-    return <div>Loading...</div>;
+    return (
+      <div className="loading-container">
+        <div className="loading-spinner"></div>
+      </div>
+    );
   }
   
-  return user ? children : <Navigate to="/" />;
+  // Check if user is admin (only allow kritim724@gmail.com)
+  const isAdmin = user?.email === 'kritim724@gmail.com';
+  
+  if (!user) {
+    return <Navigate to="/" />;
+  }
+  
+  if (!isAdmin) {
+    return <Navigate to="/dashboard" />;
+  }
+  
+  return children;
 };
 
 const App = () => {
@@ -27,33 +45,49 @@ const App = () => {
           <Route
             path="/profile"
             element={
-              <PrivateRoute>
+              <AuthRoute>
                 <Profile />
-              </PrivateRoute>
+              </AuthRoute>
             }
           />
           <Route
             path="/dashboard"
             element={
-              <PrivateRoute>
+              <AuthRoute>
                 <Dashboard />
-              </PrivateRoute>
+              </AuthRoute>
             }
           />
           <Route
             path="/maintenance-request"
             element={
-              <PrivateRoute>
+              <AuthRoute>
                 <MaintenanceRequest />
-              </PrivateRoute>
+              </AuthRoute>
             }
           />
           <Route
             path="/request-status"
             element={
-              <PrivateRoute>
+              <AuthRoute>
                 <RequestStatus />
-              </PrivateRoute>
+              </AuthRoute>
+            }
+          />
+          <Route
+            path="/request/:id"
+            element={
+              <AuthRoute>
+                <RequestDetails />
+              </AuthRoute>
+            }
+          />
+          <Route
+            path="/admin"
+            element={
+              <AdminRoute>
+                <AdminDashboard />
+              </AdminRoute>
             }
           />
         </Routes>

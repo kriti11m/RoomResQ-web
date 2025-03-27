@@ -1,15 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../firebase/auth';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useAuth } from '../firebase/auth';
+import Header from '../components/Header';
 
 function Home() {
-  const { signInWithGoogle } = useAuth();
+  const { user, signInWithGoogle } = useAuth();
   const navigate = useNavigate();
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  // eslint-disable-next-line no-unused-vars
-  const { user } = useAuth();
+  const [loginType, setLoginType] = useState(null); // 'student' or 'admin'
 
   // Add animation to feature items when they come into view
   useEffect(() => {
@@ -32,19 +32,29 @@ function Home() {
     };
   }, []);
 
-  const handleSignIn = async () => {
+  const handleSignIn = async (type) => {
     setIsLoading(true);
     setError('');
     try {
-      const { user, isNewUser } = await signInWithGoogle();
-      if (isNewUser) {
-        navigate('/profile');
+      const { user } = await signInWithGoogle();
+      
+      // Validate email based on login type
+      if (type === 'student' && !user.email.endsWith('@vitstudent.ac.in')) {
+        throw new Error('Please use your VIT student email (@vitstudent.ac.in)');
+      }
+      
+      if (type === 'admin' && user.email !== 'kritim724@gmail.com') {
+        throw new Error('Invalid admin email');
+      }
+
+      // Navigate based on login type
+      if (type === 'admin') {
+        navigate('/admin');
       } else {
         navigate('/dashboard');
       }
     } catch (error) {
-      console.error('Sign in error:', error);
-      setError(error.message || 'Failed to sign in. Please try again.');
+      setError(error.message);
     } finally {
       setIsLoading(false);
     }
@@ -52,6 +62,7 @@ function Home() {
 
   return (
     <div>
+      <Header />
       <section className="welcome-section">
         {/* Add animated floating shapes */}
         <div className="shape shape-1"></div>
@@ -66,34 +77,65 @@ function Home() {
           <p>Your one-stop solution for efficient hostel maintenance management. Submit requests, track status, and get timely repairs - all in one place! Designed specifically for campus living, RoomResQ simplifies the entire maintenance process for students and staff. Experience a hassle-free living environment with quick resolutions to all your maintenance needs.</p>
         </div>
         <div className="cta-buttons">
-          <motion.button
-            className="btn btn-primary"
-            onClick={handleSignIn}
-            disabled={isLoading}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-          >
-            {isLoading ? (
-              <span className="button-content">
-                <div className="loading-spinner"></div>
-                Signing in...
-              </span>
-            ) : (
-              'Sign in with VIT Mail'
-            )}
-          </motion.button>
-          <AnimatePresence>
-            {error && (
-              <motion.div
-                className="error-message"
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
+          {!loginType ? (
+            <>
+              <motion.button 
+                className="btn btn-primary"
+                onClick={() => setLoginType('student')}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
               >
-                {error}
-              </motion.div>
-            )}
-          </AnimatePresence>
+                Student Login
+              </motion.button>
+              <motion.button 
+                className="btn btn-secondary"
+                onClick={() => setLoginType('admin')}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                Admin Login
+              </motion.button>
+            </>
+          ) : (
+            <div className="login-options">
+              <AnimatePresence>
+                {error && (
+                  <motion.div
+                    className="error-message"
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                  >
+                    {error}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+              <motion.button
+                className="btn btn-primary"
+                onClick={() => handleSignIn(loginType)}
+                disabled={isLoading}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                {isLoading ? (
+                  <span className="button-content">
+                    <div className="loading-spinner"></div>
+                    Signing in...
+                  </span>
+                ) : (
+                  `Sign in with Google ${loginType === 'student' ? '(VIT Student)' : '(Admin)'}`
+                )}
+              </motion.button>
+              <motion.button
+                className="btn btn-secondary"
+                onClick={() => setLoginType(null)}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                Back
+              </motion.button>
+            </div>
+          )}
         </div>
       </section>
       

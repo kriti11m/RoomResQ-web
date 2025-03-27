@@ -2,66 +2,69 @@ import React, { useState, useEffect } from 'react';
 import { getUserRequests } from '../firebase/requests';
 import Header from '../components/Header';
 import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 
 const RequestStatus = () => {
+  const navigate = useNavigate();
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    const fetchRequests = async () => {
-      try {
-        const userRequests = await getUserRequests();
-        setRequests(userRequests);
-      } catch (error) {
-        console.error('Error fetching requests:', error);
-        setError(error.message || 'Failed to load your maintenance requests');
-      } finally {
-        setLoading(false);
+  const fetchRequests = async (showRefreshing = false) => {
+    if (showRefreshing) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+    setError(null);
+    
+    try {
+      const data = await getUserRequests();
+      setRequests(data);
+    } catch (err) {
+      console.error('Error fetching requests:', err);
+      
+      // Special handling for the PostgreSQL Large Objects error
+      if (err.message && err.message.includes('Large Objects may not be used in auto-commit mode')) {
+        setError('The server is experiencing a database configuration issue. The administrator has been notified. Please try again later or contact support if this persists.');
+      } else {
+        setError(err.message || 'Failed to load maintenance requests');
       }
-    };
+    } finally {
+      setLoading(false);
+      if (showRefreshing) {
+        setRefreshing(false);
+      }
+    }
+  };
 
+  // Fetch requests when component mounts
+  useEffect(() => {
     fetchRequests();
   }, []);
+
+  const handleRefresh = () => {
+    fetchRequests(true);
+  };
+
+  const handleViewDetails = (id) => {
+    navigate(`/request/${id}`);
+  };
 
   const getStatusBadgeClass = (status) => {
     switch (status?.toUpperCase()) {
       case 'PENDING':
-        return { 
-          className: 'status-badge status-pending',
-          background: 'rgba(255, 166, 0, 0.1)',
-          color: '#ff9800',
-          border: '1px solid rgba(255, 166, 0, 0.3)'
-        };
+        return 'status-badge status-pending';
       case 'IN_PROGRESS':
       case 'INPROGRESS':
-        return { 
-          className: 'status-badge status-in-progress',
-          background: 'rgba(33, 150, 243, 0.1)',
-          color: '#2196f3',
-          border: '1px solid rgba(33, 150, 243, 0.3)'
-        };
+        return 'status-badge status-in-progress';
       case 'COMPLETED':
-        return { 
-          className: 'status-badge status-completed',
-          background: 'rgba(76, 175, 80, 0.1)',
-          color: '#4caf50',
-          border: '1px solid rgba(76, 175, 80, 0.3)'
-        };
+        return 'status-badge status-completed';
       case 'CANCELLED':
-        return { 
-          className: 'status-badge status-cancelled',
-          background: 'rgba(244, 67, 54, 0.1)',
-          color: '#f44336',
-          border: '1px solid rgba(244, 67, 54, 0.3)'
-        };
+        return 'status-badge status-cancelled';
       default:
-        return { 
-          className: 'status-badge',
-          background: 'rgba(158, 158, 158, 0.1)',
-          color: '#9e9e9e',
-          border: '1px solid rgba(158, 158, 158, 0.3)'
-        };
+        return 'status-badge';
     }
   };
   
@@ -95,67 +98,81 @@ const RequestStatus = () => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
         >
-          <h2 style={{ 
-            marginBottom: '2rem', 
-            textAlign: 'center',
-            color: 'var(--white)',
-            fontSize: '2.5rem'
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '2rem'
           }}>
-            Your Maintenance Requests
-          </h2>
+            <h2 style={{ 
+              color: 'var(--white)',
+              fontSize: '2.5rem',
+              margin: 0
+            }}>
+              Your Maintenance Requests
+            </h2>
+            <button 
+              onClick={handleRefresh}
+              disabled={refreshing || loading}
+              style={{
+                padding: '0.75rem 1.5rem',
+                background: 'transparent',
+                border: '1px solid var(--primary)',
+                color: 'var(--primary)',
+                borderRadius: '6px',
+                cursor: refreshing || loading ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                transition: 'all 0.3s ease'
+              }}
+              onMouseOver={(e) => {
+                if (!refreshing && !loading) {
+                  e.target.style.backgroundColor = 'rgba(147, 51, 234, 0.1)';
+                }
+              }}
+              onMouseOut={(e) => {
+                e.target.style.backgroundColor = 'transparent';
+              }}
+            >
+              {refreshing ? (
+                <>
+                  <div className="loading-spinner-small"></div>
+                  <span>Refreshing...</span>
+                </>
+              ) : (
+                <>
+                  <i className="fa fa-refresh"></i>
+                  <span>Refresh</span>
+                </>
+              )}
+            </button>
+          </div>
           
           {loading ? (
-            <div style={{ 
-              textAlign: 'center', 
-              padding: '2rem',
-              color: 'var(--light)' 
-            }}>
-              <p>Loading your requests...</p>
+            <div className="loading-container">
+              <div className="loading-spinner"></div>
+              <p>Loading your maintenance requests...</p>
             </div>
           ) : error ? (
-            <div style={{ 
-              textAlign: 'center', 
-              padding: '2rem',
-              color: '#ff6b6b' 
-            }}>
+            <div className="error-container">
+              <div className="error-icon">⚠️</div>
+              <h3>Error Loading Requests</h3>
               <p>{error}</p>
-              <button 
-                onClick={() => window.location.reload()} 
-                style={{
-                  marginTop: '1rem',
-                  padding: '0.5rem 1rem',
-                  background: 'transparent',
-                  border: '1px solid var(--primary)',
-                  color: 'var(--primary)',
-                  borderRadius: '4px',
-                  cursor: 'pointer'
-                }}
-              >
+              <button className="retry-button" onClick={() => fetchRequests()}>
                 Try Again
               </button>
             </div>
           ) : requests.length === 0 ? (
-            <div style={{ 
-              textAlign: 'center', 
-              padding: '2rem',
-              background: 'linear-gradient(145deg, var(--dark-light), rgba(12, 12, 30, 0.95))',
-              borderRadius: '12px',
-              color: 'var(--light)'
-            }}>
+            <div className="empty-container">
+              <div className="empty-icon">📋</div>
+              <h3>No Maintenance Requests</h3>
               <p>You haven't submitted any maintenance requests yet.</p>
               <button 
-                onClick={() => window.location.href = '/maintenance-request'} 
-                style={{
-                  marginTop: '1rem',
-                  padding: '0.75rem 1.5rem',
-                  background: 'var(--primary)',
-                  border: 'none',
-                  color: 'white',
-                  borderRadius: '6px',
-                  cursor: 'pointer'
-                }}
+                className="create-request-button"
+                onClick={() => navigate('/maintenance-request')}
               >
-                Submit a New Request
+                Create New Request
               </button>
             </div>
           ) : (
@@ -170,7 +187,15 @@ const RequestStatus = () => {
                     borderRadius: '12px',
                     padding: '1.5rem',
                     border: '1px solid rgba(147, 51, 234, 0.1)',
-                    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+                    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s ease'
+                  }}
+                  onClick={() => handleViewDetails(request.ticketid)}
+                  whileHover={{ 
+                    scale: 1.01, 
+                    boxShadow: '0 10px 25px rgba(0, 0, 0, 0.2)',
+                    border: '1px solid rgba(147, 51, 234, 0.3)'
                   }}
                 >
                   <div style={{ 
@@ -184,13 +209,7 @@ const RequestStatus = () => {
                     <h3 style={{ color: 'var(--white)', margin: 0 }}>
                       {request.issue || 'Maintenance Request'}
                     </h3>
-                    <span style={{
-                      padding: '0.35rem 0.75rem',
-                      borderRadius: '50px',
-                      fontSize: '0.85rem',
-                      fontWeight: 'bold',
-                      ...getStatusBadgeClass(request.status)
-                    }}>
+                    <span className={getStatusBadgeClass(request.status)}>
                       {request.status || 'UNKNOWN'}
                     </span>
                   </div>
@@ -207,7 +226,7 @@ const RequestStatus = () => {
                         fontWeight: 'bold',
                         marginBottom: '0.25rem' 
                       }}>Description:</p>
-                      <p style={{ color: 'var(--white)', margin: 0 }}>
+                      <p style={{ color: 'var(--white)', margin: 0, maxHeight: '60px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {request.description || 'No description provided'}
                       </p>
                     </div>
@@ -228,18 +247,8 @@ const RequestStatus = () => {
                     display: 'grid', 
                     gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
                     gap: '1rem',
-                    marginBottom: '1.5rem'
+                    marginBottom: '0.5rem'
                   }}>
-                    <div>
-                      <p style={{ 
-                        color: 'var(--light)', 
-                        fontWeight: 'bold',
-                        marginBottom: '0.25rem' 
-                      }}>Urgency:</p>
-                      <p style={{ color: 'var(--white)', margin: 0 }}>
-                        {request.Urgeny || 'Not specified'}
-                      </p>
-                    </div>
                     <div>
                       <p style={{ 
                         color: 'var(--light)', 
@@ -250,55 +259,27 @@ const RequestStatus = () => {
                         {formatDate(request.date)}
                       </p>
                     </div>
-                    <div>
-                      <p style={{ 
-                        color: 'var(--light)', 
-                        fontWeight: 'bold',
-                        marginBottom: '0.25rem' 
-                      }}>Time:</p>
-                      <p style={{ color: 'var(--white)', margin: 0 }}>
-                        {formatDate(request.time)}
-                      </p>
-                    </div>
+                    
                     <div>
                       <p style={{ 
                         color: 'var(--light)', 
                         fontWeight: 'bold',
                         marginBottom: '0.25rem' 
                       }}>Ticket ID:</p>
-                      <p style={{ color: 'var(--white)', margin: 0 }}>
-                        #{request.ticketid || 'N/A'}
+                      <p style={{ color: 'var(--primary-light)', margin: 0, fontFamily: 'monospace', letterSpacing: '0.5px' }}>
+                        {request.ticketid}
                       </p>
                     </div>
                   </div>
-
-                  {request.image && (
-                    <div style={{ marginTop: '1rem' }}>
-                      <p style={{ 
-                        color: 'var(--light)', 
-                        fontWeight: 'bold',
-                        marginBottom: '0.5rem' 
-                      }}>Image:</p>
-                      <div style={{ 
-                        maxWidth: '100%', 
-                        overflow: 'hidden', 
-                        borderRadius: '8px',
-                        border: '1px solid rgba(147, 51, 234, 0.2)'
-                      }}>
-                        <img 
-                          src={getImageUrl(request.image)} 
-                          alt="Maintenance issue" 
-                          style={{ 
-                            maxWidth: '100%', 
-                            maxHeight: '300px',
-                            objectFit: 'contain',
-                            display: 'block',
-                            margin: '0 auto'
-                          }} 
-                        />
-                      </div>
-                    </div>
-                  )}
+                  
+                  <div style={{ 
+                    textAlign: 'right', 
+                    marginTop: '1rem', 
+                    fontSize: '0.9rem', 
+                    color: 'var(--primary-light)' 
+                  }}>
+                    Click to view details
+                  </div>
                 </motion.div>
               ))}
             </div>
