@@ -161,21 +161,9 @@ export const getUserRequests = async () => {
 // Function to get a single maintenance request by ID
 export const getRequestById = async (requestId) => {
   try {
-    // Get user profile from localStorage
-    const userProfileString = localStorage.getItem('userProfile');
-    if (!userProfileString) {
-      throw new Error('User profile not found. Please complete your profile first.');
-    }
-
-    // Parse user profile to get email
-    const userProfile = JSON.parse(userProfileString);
-    if (!userProfile.email) {
-      throw new Error('User email not found. Please complete your profile.');
-    }
-
     console.log(`Fetching maintenance request with ID: ${requestId}`);
 
-    // Send the GET request
+    // Send the GET request to the backend endpoint
     const response = await fetch(`http://172.18.218.136:8081/api/maintenance/${requestId}`, {
       method: 'GET',
       headers: {

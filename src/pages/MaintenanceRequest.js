@@ -127,7 +127,10 @@ const MaintenanceRequest = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // Validate form
+    // Reset errors
+    setError('');
+    
+    // Validate form data
     const validationError = validateForm();
     if (validationError) {
       setError(validationError);
@@ -135,43 +138,35 @@ const MaintenanceRequest = () => {
     }
     
     setIsLoading(true);
-    setError('');
     
     try {
+      // Submit the maintenance request
       const result = await submitMaintenanceRequest(formData);
       
-      // Check if the result contains a ticket ID
-      if (result && result.ticketid) {
-        alert('Request submitted successfully!');
-        
-        // Reset form data
-        setFormData({
-          issueType: '',
-          description: '',
-          urgencyLevel: '',
-          preferredDateTime: '',
-          listType: '',
-          proof: null
-        });
-        
-        // Navigate to request details page
-        navigate(`/request/${result.ticketid}`);
+      // If successful, show success message
+      alert(`Your maintenance request has been submitted successfully! Ticket ID: ${result.ticketId || result.ticketid}`);
+      
+      // Navigate to request details page with the ticket ID
+      if (result.ticketId || result.ticketid) {
+        navigate(`/request/${result.ticketId || result.ticketid}`);
       } else {
-        // Fallback to request status page if no ticket ID is returned
-        alert('Request submitted successfully!');
-        setFormData({
-          issueType: '',
-          description: '',
-          urgencyLevel: '',
-          preferredDateTime: '',
-          listType: '',
-          proof: null
-        });
+        // If ticket ID is not provided, navigate to request status page
         navigate('/request-status');
       }
+      
+      // Reset form
+      setFormData({
+        issueType: '',
+        description: '',
+        listType: '',
+        urgencyLevel: '',
+        preferredDateTime: '',
+        proof: null
+      });
+      
     } catch (error) {
       console.error('Error submitting request:', error);
-      setError(error.message || 'Error submitting request. Please try again.');
+      setError(error.message || 'Failed to submit your request. Please try again.');
     } finally {
       setIsLoading(false);
     }
