@@ -64,7 +64,7 @@ const Dashboard = () => {
       }
 
       // Only fetch from backend if profile is completed
-      const response = await fetch(`http://172.18.218.136:8081/api/user/${user.uid}`, {
+      const response = await fetch(`http://localhost:8081/api/user/${user.uid}`, {
         method: 'GET',
         headers: {
           'Accept': 'application/json'
@@ -140,7 +140,7 @@ const Dashboard = () => {
           
           console.log('Firebase user photo URL:', user.photoURL);
           
-          const response = await fetch(`http://172.18.218.136:8081/api/user/${user.uid}`, {
+          const response = await fetch(`http://localhost:8081/api/user/${user.uid}`, {
             method: 'GET',
             headers: {
               'Accept': 'application/json'
@@ -160,7 +160,7 @@ const Dashboard = () => {
               
               // Update the backend with the photo URL
               try {
-                const updateResponse = await fetch('http://172.18.218.136:8081/api/user/completeprofile', {
+                const updateResponse = await fetch('http://localhost:8081/api/user/completeprofile', {
                   method: 'POST',
                   headers: {
                     'Content-Type': 'application/json',
@@ -322,7 +322,7 @@ const Dashboard = () => {
     try {
       // Fetch the latest profile data from the backend before editing
       if (user?.uid) {
-        const response = await fetch(`http://172.18.218.136:8081/api/user/${user.uid}`, {
+        const response = await fetch(`http://localhost:8081/api/user/${user.uid}`, {
           method: 'GET',
           headers: {
             'Accept': 'application/json'
@@ -415,7 +415,7 @@ const Dashboard = () => {
       console.log('Sending profile update with data:', updatedProfileData);
 
       // Send update request to the backend
-      const response = await fetch('http://172.18.218.136:8081/api/user/completeprofile', {
+      const response = await fetch('http://localhost:8081/api/user/completeprofile', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

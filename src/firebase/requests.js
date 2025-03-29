@@ -1,7 +1,7 @@
 import { auth } from './config';
 
 // API endpoint for maintenance requests
-const API_BASE_URL = 'http://172.18.218.136:8081/api';
+const API_BASE_URL = 'http://localhost:8081/api';
 
 // Function to submit a maintenance request
 export const submitMaintenanceRequest = async (formData) => {
@@ -53,7 +53,7 @@ export const submitMaintenanceRequest = async (formData) => {
     console.log('Sending maintenance request:', requestPayload);
 
     // Send maintenance request with email as a request parameter
-    const maintenanceResponse = await fetch(`http://172.18.218.136:8081/api/maintenance?email=${encodeURIComponent(userProfile.email)}`, {
+    const maintenanceResponse = await fetch(`http://localhost:8081/api/maintenance?email=${encodeURIComponent(userProfile.email)}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -106,7 +106,7 @@ export const getUserRequests = async () => {
     console.log('Fetching maintenance requests for email:', userProfile.email);
 
     // Fetch requests based on user email from localStorage
-    const response = await fetch(`http://172.18.218.136:8081/api/maintenance/user?email=${encodeURIComponent(userProfile.email)}`, {
+    const response = await fetch(`http://localhost:8081/api/maintenance/user?email=${encodeURIComponent(userProfile.email)}`, {
       method: 'GET',
       headers: {
         'Accept': 'application/json'
@@ -164,7 +164,7 @@ export const getRequestById = async (requestId) => {
     console.log(`Fetching maintenance request with ID: ${requestId}`);
 
     // Send the GET request to the backend endpoint
-    const response = await fetch(`http://172.18.218.136:8081/api/maintenance/${requestId}`, {
+    const response = await fetch(`http://localhost:8081/api/maintenance/${requestId}`, {
       method: 'GET',
       headers: {
         'Accept': 'application/json'

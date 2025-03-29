@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider, useAuth } from './firebase/auth';
 import Home from './pages/Home';
 import Profile from './pages/Profile';
+import AdminProfile from './pages/AdminProfile';
 import Dashboard from './pages/Dashboard';
 import MaintenanceRequest from './pages/MaintenanceRequest';
 import RequestStatus from './pages/RequestStatus';
@@ -12,7 +13,7 @@ import AuthRoute from './components/AuthRoute';
 import './App.css';
 
 const AdminRoute = ({ children }) => {
-  const { user, loading } = useAuth();
+  const { user, loading, isAdmin } = useAuth();
   
   if (loading) {
     return (
@@ -22,26 +23,22 @@ const AdminRoute = ({ children }) => {
     );
   }
   
-  // Check if user is admin (only allow kritim724@gmail.com)
-  const isAdmin = user?.email === 'kritim724@gmail.com';
-  
-  if (!user) {
+  if (!user || !isAdmin) {
     return <Navigate to="/" />;
-  }
-  
-  if (!isAdmin) {
-    return <Navigate to="/dashboard" />;
   }
   
   return children;
 };
 
-const App = () => {
+function App() {
   return (
     <AuthProvider>
       <Router>
         <Routes>
+          {/* Public Routes */}
           <Route path="/" element={<Home />} />
+
+          {/* Protected Student Routes */}
           <Route
             path="/profile"
             element={
@@ -82,18 +79,31 @@ const App = () => {
               </AuthRoute>
             }
           />
+
+          {/* Protected Admin Routes */}
           <Route
-            path="/admin"
+            path="/admin/profile"
+            element={
+              <AdminRoute>
+                <AdminProfile />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/admin/dashboard"
             element={
               <AdminRoute>
                 <AdminDashboard />
               </AdminRoute>
             }
           />
+
+          {/* Catch all route */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>
     </AuthProvider>
   );
-};
+}
 
 export default App;

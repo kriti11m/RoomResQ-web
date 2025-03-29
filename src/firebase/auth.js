@@ -17,6 +17,7 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [hasProfile, setHasProfile] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -24,7 +25,7 @@ export const AuthProvider = ({ children }) => {
       if (user) {
         try {
           // Check if user exists in backend
-          const response = await fetch(`http://172.18.218.136:8081/api/user/${user.uid}`, {
+          const response = await fetch(`http://localhost:8081/api/user/${user.uid}`, {
             method: 'GET',
             headers: {
               'Accept': 'application/json'
@@ -35,18 +36,22 @@ export const AuthProvider = ({ children }) => {
             const userData = await response.json();
             localStorage.setItem('userProfile', JSON.stringify(userData));
             setHasProfile(true);
+            setIsAdmin(userData.isAdmin || false);
           } else {
             localStorage.removeItem('userProfile');
             setHasProfile(false);
+            setIsAdmin(false);
           }
         } catch (error) {
           console.error('Error checking user:', error);
           localStorage.removeItem('userProfile');
           setHasProfile(false);
+          setIsAdmin(false);
         }
       } else {
         localStorage.removeItem('userProfile');
         setHasProfile(false);
+        setIsAdmin(false);
       }
       setLoading(false);
     });
@@ -54,7 +59,7 @@ export const AuthProvider = ({ children }) => {
     return unsubscribe;
   }, []);
 
-  const signInWithGoogle = async () => {
+  const signInWithGoogle = async (isAdminLogin = false) => {
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({
       prompt: 'select_account'
@@ -64,7 +69,8 @@ export const AuthProvider = ({ children }) => {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
       
-      if (!user.email.endsWith('@vit.ac.in') && !user.email.endsWith('@vitstudent.ac.in')) {
+      // Only check domain for student login
+      if (!isAdminLogin && !user.email.endsWith('@vit.ac.in') && !user.email.endsWith('@vitstudent.ac.in')) {
         await firebaseSignOut(auth);
         throw new Error('Please use your VIT email address (@vit.ac.in or @vitstudent.ac.in)');
       }
@@ -72,13 +78,16 @@ export const AuthProvider = ({ children }) => {
       const idToken = await user.getIdToken();
       
       // Send token to backend for authentication and user creation
-      const response = await fetch('http://172.18.218.136:8081/api/auth/google-signin', {
+      const response = await fetch('http://localhost:8081/api/auth/google-signin', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json'
         },
-        body: JSON.stringify({ idToken })
+        body: JSON.stringify({ 
+          idToken,
+          isAdmin: isAdminLogin 
+        })
       });
 
       if (!response.ok) {
@@ -89,20 +98,22 @@ export const AuthProvider = ({ children }) => {
       }
 
       const responseData = await response.json();
-      const userData = responseData.user; // Extract user data from response
+      const userData = responseData.user;
 
       // Store basic profile data
       const basicProfile = {
         firebaseUid: userData.firebaseUid || user.uid,
         email: userData.email || user.email,
         name: userData.name || user.displayName,
-        photoUrl: userData.photoUrl || user.photoURL
+        photoUrl: userData.photoUrl || user.photoURL,
+        isAdmin: userData.isAdmin || isAdminLogin
       };
       localStorage.setItem('userProfile', JSON.stringify(basicProfile));
 
       // Check if profile is complete
-      const isNewUser = !userData.regNo || !userData.phonenumber || !userData.block || !userData.roomNo;
+      const isNewUser = !userData.block; // For admin, we only need block
       setHasProfile(!isNewUser);
+      setIsAdmin(isAdminLogin);
 
       return { user, isNewUser };
     } catch (error) {
@@ -114,6 +125,7 @@ export const AuthProvider = ({ children }) => {
   const signOut = () => {
     localStorage.removeItem('userProfile');
     setHasProfile(false);
+    setIsAdmin(false);
     return firebaseSignOut(auth);
   };
 
@@ -121,6 +133,7 @@ export const AuthProvider = ({ children }) => {
     user,
     loading,
     hasProfile,
+    isAdmin,
     signInWithGoogle,
     signOut
   };

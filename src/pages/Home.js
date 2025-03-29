@@ -36,25 +36,16 @@ function Home() {
     setIsLoading(true);
     setError('');
     try {
-      const { user } = await signInWithGoogle();
+      const { user, isNewUser } = await signInWithGoogle(type === 'admin');
       
-      // Validate email based on login type
-      if (type === 'student' && !user.email.endsWith('@vitstudent.ac.in')) {
-        throw new Error('Please use your VIT student email (@vitstudent.ac.in)');
-      }
-      
-      if (type === 'admin' && user.email !== 'kritim724@gmail.com') {
-        throw new Error('Invalid admin email');
-      }
-
-      // Navigate based on login type
+      // Navigate based on login type and whether the user is new
       if (type === 'admin') {
-        navigate('/admin');
+        navigate(isNewUser ? '/admin/profile' : '/admin/dashboard');
       } else {
-        navigate('/dashboard');
+        navigate(isNewUser ? '/profile' : '/dashboard');
       }
     } catch (error) {
-      setError(error.message);
+      setError(error.message || 'Failed to sign in. Please try again.');
     } finally {
       setIsLoading(false);
     }

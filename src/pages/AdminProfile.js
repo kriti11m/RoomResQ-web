@@ -3,28 +3,27 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../firebase/auth';
 import { motion } from 'framer-motion';
 
-const Profile = () => {
+const AdminProfile = () => {
   const navigate = useNavigate();
-  const { user, hasProfile } = useAuth();
+  const { user, hasProfile, isAdmin } = useAuth();
   const [formData, setFormData] = useState({
     firebaseUid: user?.uid || '',
     email: user?.email || '',
     name: user?.displayName || '',
-    phonenumber: '',
-    roomNo: '',
     hostelType: '',
-    block: '',
-    regNo: ''
+    block: ''
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Redirect to dashboard if user already has a profile
+  // Redirect to admin dashboard if user already has a profile or is not an admin
   useEffect(() => {
-    if (hasProfile) {
+    if (!isAdmin) {
       navigate('/dashboard', { replace: true });
+    } else if (hasProfile) {
+      navigate('/admin/dashboard', { replace: true });
     }
-  }, [hasProfile, navigate]);
+  }, [hasProfile, isAdmin, navigate]);
 
   // Load existing profile data if available
   useEffect(() => {
@@ -66,15 +65,11 @@ const Profile = () => {
     setLoading(true);
 
     try {
-      // Ensure all required fields are filled
-      const requiredFields = ['regNo', 'phonenumber', 'hostelType', 'block', 'roomNo'];
-      const missingFields = requiredFields.filter(field => !formData[field]);
-      
-      if (missingFields.length > 0) {
-        throw new Error(`Please fill in all required fields: ${missingFields.join(', ')}`);
+      if (!formData.hostelType || !formData.block) {
+        throw new Error('Please fill in all required fields');
       }
 
-      const response = await fetch('http://localhost:8081/api/user/completeprofile', {
+      const response = await fetch('http://localhost:8081/api/admin/completeprofile', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -85,7 +80,8 @@ const Profile = () => {
           email: user.email,
           name: user.displayName,
           photoUrl: user.photoURL,
-          firebaseUid: user.uid
+          firebaseUid: user.uid,
+          isAdmin: true
         }),
       });
 
@@ -106,8 +102,8 @@ const Profile = () => {
         }
       }));
 
-      // Force a page reload to ensure all states are updated
-      window.location.href = '/dashboard';
+      // Navigate to admin dashboard
+      navigate('/admin/dashboard');
     } catch (error) {
       console.error('Error completing profile:', error);
       setError(error.message || 'Failed to complete profile. Please try again.');
@@ -155,7 +151,7 @@ const Profile = () => {
           transition={{ delay: 0.2 }}
           style={{ marginBottom: '2rem', textAlign: 'center' }}
         >
-          Complete Your Profile
+          Complete Admin Profile
         </motion.h2>
 
         {error && (
@@ -165,34 +161,6 @@ const Profile = () => {
         )}
 
         <form onSubmit={handleSubmit}>
-          <motion.div className="form-group" variants={inputVariants}>
-            <label htmlFor="regNo">Registration Number</label>
-            <input
-              type="text"
-              id="regNo"
-              name="regNo"
-              value={formData.regNo}
-              onChange={handleChange}
-              required
-              placeholder="Enter your registration number"
-            />
-          </motion.div>
-
-          <motion.div className="form-group" variants={inputVariants}>
-            <label htmlFor="phonenumber">Phone Number</label>
-            <input
-              type="tel"
-              id="phonenumber"
-              name="phonenumber"
-              value={formData.phonenumber}
-              onChange={handleChange}
-              required
-              placeholder="Enter your phone number"
-              pattern="[0-9]{10}"
-              title="Please enter a valid 10-digit phone number"
-            />
-          </motion.div>
-
           <motion.div className="form-group" variants={inputVariants}>
             <label htmlFor="hostelType">Hostel Type</label>
             <select
@@ -210,7 +178,7 @@ const Profile = () => {
           </motion.div>
 
           <motion.div className="form-group" variants={inputVariants}>
-            <label htmlFor="block">Block</label>
+            <label htmlFor="block">Block Assignment</label>
             <select
               id="block"
               name="block"
@@ -220,22 +188,9 @@ const Profile = () => {
             >
               <option value="">Select Block</option>
               {blocks.map(block => (
-                <option key={block} value={block}>{block}</option>
+                <option key={block} value={block}>Block {block}</option>
               ))}
             </select>
-          </motion.div>
-
-          <motion.div className="form-group" variants={inputVariants}>
-            <label htmlFor="roomNo">Room Number</label>
-            <input
-              type="text"
-              id="roomNo"
-              name="roomNo"
-              value={formData.roomNo}
-              onChange={handleChange}
-              required
-              placeholder="Enter your room number"
-            />
           </motion.div>
 
           <motion.button
@@ -254,4 +209,4 @@ const Profile = () => {
   );
 };
 
-export default Profile; 
+export default AdminProfile; 
