@@ -10,6 +10,7 @@ import RequestStatus from './pages/RequestStatus';
 import RequestDetails from './pages/RequestDetails';
 import AdminDashboard from './components/admin/AdminDashboard';
 import AuthRoute from './components/AuthRoute';
+import AdminRequestDetails from './components/admin/AdminRequestDetails';
 import './App.css';
 
 const AdminRoute = ({ children }) => {
@@ -94,6 +95,14 @@ function App() {
             element={
               <AdminRoute>
                 <AdminDashboard />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/admin/request/:id"
+            element={
+              <AdminRoute>
+                <AdminRequestDetails />
               </AdminRoute>
             }
           />

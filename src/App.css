@@ -7,24 +7,24 @@
 
 :root {
   --primary: #9333ea;          /* Deeper purple */
-  --primary-light: #a855f7;    /* Slightly lighter but still rich purple */
+  --primary-light: #a78bfa;    /* Slightly lighter but still rich purple */
   --secondary: #0891b2;        /* Deeper teal */
   --accent: #d97706;           /* Deeper amber */
   --success: #059669;          /* Deeper emerald */
   --warning: #d97706;          /* Deeper amber */
   --danger: #dc2626;           /* Deeper red */
-  --dark: #030308;             /* Ultra dark blue-black */
-  --dark-light: #0c0c1d;       /* Very dark navy */
+  --dark: #0a0a1a;             /* Ultra dark blue-black */
+  --dark-light: #12121f;       /* Very dark navy */
   --gray: #4b5563;             /* Darker gray */
   --gray-light: #6b7280;       /* Darker light gray */
-  --light: #f3f4f6;            /* Keep light color for text contrast */
-  --white: #ffffff;            /* Keep white for maximum contrast where needed */
+  --light: #a0a0b0;            /* Keep light color for text contrast */
+  --white: #e6e6e6;            /* Keep white for maximum contrast where needed */
   --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.2);
   --card-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
 }
 
 body {
-  background-color: #030308;  /* Ultra dark background */
+  background-color: var(--dark);
   color: var(--light);
   line-height: 1.6;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
@@ -44,6 +44,8 @@ body {
   max-width: 1200px;
   margin: 0 auto;
   padding: 0 15px;
+  background-color: var(--dark-light);
+  color: var(--light);
 }
 
 /* Navigation Bar */
@@ -1926,11 +1928,11 @@ body {
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 4px;
+  background: var(--dark);
 }
 
 ::-webkit-scrollbar-thumb {

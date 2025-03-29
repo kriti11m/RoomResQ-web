@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../firebase/auth';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx';
@@ -10,6 +10,7 @@ import './AdminDashboard.css';
 const AdminDashboard = () => {
   const { user } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [maintenanceRequests, setMaintenanceRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -90,6 +91,13 @@ const AdminDashboard = () => {
       }
       
       const requests = await response.json();
+      console.log('Maintenance requests from backend:', requests);
+      
+      // Log the user data in the requests to verify the format
+      requests.forEach((request, index) => {
+        console.log(`Request #${index + 1} user data:`, request.user);
+      });
+      
       setMaintenanceRequests(requests);
     } catch (error) {
       console.error('Error fetching maintenance requests:', error);
@@ -402,6 +410,11 @@ const AdminDashboard = () => {
     doc.save(`maintenance_report_${reportType}_${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
+  // Add a function to handle View button click
+  const handleViewRequest = (requestId) => {
+    navigate(`/admin/request/${requestId}`);
+  };
+
   if (loading) {
     return (
       <div className="admin-dashboard">
@@ -534,19 +547,19 @@ const AdminDashboard = () => {
               <div className="stat-card">
                 <h3>Pending</h3>
                 <p className="stat-value pending">
-                  {maintenanceRequests.filter(r => r.status === 'pending').length}
+                  {maintenanceRequests.filter(req => req.status === 'pending').length}
                 </p>
               </div>
               <div className="stat-card">
                 <h3>In Progress</h3>
                 <p className="stat-value in-progress">
-                  {maintenanceRequests.filter(r => r.status === 'in-progress').length}
+                  {maintenanceRequests.filter(req => req.status === 'in-progress').length}
                 </p>
               </div>
               <div className="stat-card">
                 <h3>Completed</h3>
                 <p className="stat-value completed">
-                  {maintenanceRequests.filter(r => r.status === 'completed').length}
+                  {maintenanceRequests.filter(req => req.status === 'completed').length}
                 </p>
               </div>
             </div>
@@ -615,25 +628,43 @@ const AdminDashboard = () => {
                       <td colSpan="6" className="no-data">No maintenance requests found</td>
                     </tr>
                   ) : (
-                    maintenanceRequests.map((request) => (
-                      <tr key={request.id}>
-                        <td>{formatDateTime(request.createdAt || request.time)}</td>
-                        <td>{request.studentName || 'N/A'}</td>
-                        <td>{formatType(request)}</td>
-                        <td>
-                          <span className={`status-badge status-${request.status}`}>
-                            {request.status || 'pending'}
-                          </span>
-                        </td>
-                        <td>{request.description || 'No description'}</td>
-                        <td>
-                          <div className="action-buttons">
-                            <button className="action-button view">View</button>
-                            <button className="action-button edit">Update</button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
+                    maintenanceRequests.map((request) => {
+                      return (
+                        <tr key={request.ticketid || request.id}>
+                          <td>{formatDateTime(request.time || request.createdAt)}</td>
+                          <td className="student-cell">
+                            <div className="student-info">
+                              <span className="student-name">
+                                {request.user?.name || 'N/A'}
+                              </span>
+                              {request.user && (
+                                <div className="student-details-inline">
+                                  <span className="student-room">Room: {request.user.roomNo || 'N/A'}</span>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                          <td>{formatType(request)}</td>
+                          <td>
+                            <span className={`status-badge status-${request.status}`}>
+                              {request.status || 'pending'}
+                            </span>
+                          </td>
+                          <td>{request.description || 'No description'}</td>
+                          <td>
+                            <div className="action-buttons">
+                              <button 
+                                className="action-button view"
+                                onClick={() => handleViewRequest(request.ticketid || request.id)}
+                              >
+                                View
+                              </button>
+                              <button className="action-button edit">Update</button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
