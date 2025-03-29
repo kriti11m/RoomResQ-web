@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs } from 'firebase/firestore';
-import { db } from '../../firebase/config';
+import { Link, useLocation } from 'react-router-dom';
+import { useAuth } from '../../firebase/auth';
+import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import './AdminDashboard.css';
 
 const AdminDashboard = () => {
+  const { user } = useAuth();
+  const location = useLocation();
   const [maintenanceRequests, setMaintenanceRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -15,20 +18,78 @@ const AdminDashboard = () => {
     start: '',
     end: ''
   });
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [profileData, setProfileData] = useState(null);
 
-  useEffect(() => {
-    fetchMaintenanceRequests();
-  }, []);
+  const fetchAdminProfile = async () => {
+    if (!user?.uid) return;
+    
+    try {
+      const response = await fetch(`http://localhost:8081/api/admin/profile/${user.uid}`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const profileData = await response.json();
+        setProfileData(profileData);
+        // Store in localStorage as fallback
+        localStorage.setItem('userProfile', JSON.stringify(profileData));
+        // After getting profile, fetch maintenance requests
+        fetchMaintenanceRequests(profileData.block);
+      } else {
+        // Fallback to localStorage if backend request fails
+        const storedProfile = localStorage.getItem('userProfile');
+        if (storedProfile) {
+          try {
+            const profile = JSON.parse(storedProfile);
+            if (profile.firebaseUid === user.uid) {
+              setProfileData(profile);
+              // Use stored profile block to fetch maintenance requests
+              fetchMaintenanceRequests(profile.block);
+            }
+          } catch (error) {
+            console.error('Error parsing stored profile:', error);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching admin profile:', error);
+      setError('Failed to fetch admin profile. Please try again later.');
+    }
+  };
 
-  const fetchMaintenanceRequests = async () => {
+  const fetchMaintenanceRequests = async (adminBlock) => {
+    if (!adminBlock) {
+      setError('Admin block not found. Please complete your profile.');
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
-      const querySnapshot = await getDocs(collection(db, 'maintenanceRequests'));
-      const requests = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+      
+      const response = await fetch(`http://localhost:8081/api/admin/${adminBlock}`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
+      
+      if (response.status === 404) {
+        setMaintenanceRequests([]);
+        setLoading(false);
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch maintenance requests');
+      }
+      
+      const requests = await response.json();
       setMaintenanceRequests(requests);
     } catch (error) {
       console.error('Error fetching maintenance requests:', error);
@@ -36,6 +97,71 @@ const AdminDashboard = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  useEffect(() => {
+    if (user?.uid) {
+      fetchAdminProfile();
+    }
+  }, [user]);
+
+  const isActive = (path) => {
+    return location.pathname === path;
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    
+    try {
+      // Handle backend format like "2025-04-05 00:00:00.000000"
+      const date = new Date(dateString);
+      
+      // Check if date is valid
+      if (isNaN(date.getTime())) return 'N/A';
+      
+      // Return formatted date (Apr 5, 2025)
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return 'N/A';
+    }
+  };
+  
+  const formatDateTime = (dateTimeString) => {
+    if (!dateTimeString) return 'N/A';
+    
+    try {
+      // Handle backend format like "2025-04-05 12:10:00.000000"
+      const date = new Date(dateTimeString);
+      
+      // Check if date is valid
+      if (isNaN(date.getTime())) return 'N/A';
+      
+      // Return formatted date and time (Apr 5, 2025, 12:10 PM)
+      return date.toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch (error) {
+      console.error('Error formatting date time:', error);
+      return 'N/A';
+    }
+  };
+
+  const formatType = (request) => {
+    // Use issue field for type, fall back to type if issue is not available
+    const issueValue = request.issue || request.type || 'N/A';
+    if (!issueValue) return 'N/A';
+    // Capitalize first letter and format issue string
+    return issueValue.charAt(0).toUpperCase() + issueValue.slice(1).toLowerCase();
   };
 
   const generateReport = (type) => {
@@ -60,7 +186,12 @@ const AdminDashboard = () => {
       if (!acc[student]) {
         acc[student] = [];
       }
-      acc[student].push(request);
+      acc[student].push({
+        ...request,
+        formattedDate: formatDate(request.createdAt || request.date),
+        formattedDateTime: formatDateTime(request.createdAt || request.time),
+        formattedType: formatType(request)
+      });
       return acc;
     }, {});
 
@@ -70,12 +201,19 @@ const AdminDashboard = () => {
   const generateMonthlyReport = () => {
     // Group requests by month
     const monthlyReport = maintenanceRequests.reduce((acc, request) => {
-      const date = new Date(request.createdAt?.toDate());
-      const monthYear = `${date.getMonth() + 1}/${date.getFullYear()}`;
+      const date = new Date(request.createdAt || request.date || request.time);
+      const monthYear = isNaN(date.getTime()) ? 
+        'Unknown Date' : 
+        `${date.toLocaleString('default', { month: 'long' })} ${date.getFullYear()}`;
       if (!acc[monthYear]) {
         acc[monthYear] = [];
       }
-      acc[monthYear].push(request);
+      acc[monthYear].push({
+        ...request,
+        formattedDate: formatDate(request.createdAt || request.date),
+        formattedDateTime: formatDateTime(request.createdAt || request.time),
+        formattedType: formatType(request)
+      });
       return acc;
     }, {});
 
@@ -85,12 +223,17 @@ const AdminDashboard = () => {
   const generateWeeklyReport = () => {
     // Group requests by week
     const weeklyReport = maintenanceRequests.reduce((acc, request) => {
-      const date = new Date(request.createdAt?.toDate());
+      const date = new Date(request.createdAt || request.date || request.time);
       const weekNumber = getWeekNumber(date);
       if (!acc[weekNumber]) {
         acc[weekNumber] = [];
       }
-      acc[weekNumber].push(request);
+      acc[weekNumber].push({
+        ...request,
+        formattedDate: formatDate(request.createdAt || request.date),
+        formattedDateTime: formatDateTime(request.createdAt || request.time),
+        formattedType: formatType(request)
+      });
       return acc;
     }, {});
 
@@ -129,8 +272,8 @@ const AdminDashboard = () => {
       const flatData = Object.entries(data).flatMap(([student, requests]) =>
         requests.map(request => ({
           Student: student,
-          Date: request.createdAt?.toDate().toLocaleDateString(),
-          Type: request.type,
+          Date: request.formattedDateTime || formatDateTime(request.createdAt || request.time),
+          Type: formatType(request),
           Status: request.status,
           Description: request.description
         }))
@@ -142,19 +285,8 @@ const AdminDashboard = () => {
         requests.map(request => ({
           Period: period,
           Student: request.studentName,
-          Type: request.type,
-          Status: request.status,
-          Description: request.description
-        }))
-      );
-      worksheet = XLSX.utils.json_to_sheet(flatData);
-    } else if (reportType === 'type') {
-      // Convert type report to flat structure
-      const flatData = Object.entries(data).flatMap(([type, requests]) =>
-        requests.map(request => ({
-          Type: type,
-          Student: request.studentName,
-          Date: request.createdAt?.toDate().toLocaleDateString(),
+          Date: request.formattedDateTime || formatDateTime(request.createdAt || request.time),
+          Type: formatType(request),
           Status: request.status,
           Description: request.description
         }))
@@ -163,9 +295,9 @@ const AdminDashboard = () => {
     } else {
       // All requests
       const flatData = data.map(request => ({
-        Date: request.createdAt?.toDate().toLocaleDateString(),
+        Date: formatDateTime(request.createdAt || request.time),
         Student: request.studentName,
-        Type: request.type,
+        Type: formatType(request),
         Status: request.status,
         Description: request.description
       }));
@@ -188,8 +320,8 @@ const AdminDashboard = () => {
       tableData = Object.entries(data).flatMap(([student, requests]) =>
         requests.map(request => [
           student,
-          request.createdAt?.toDate().toLocaleDateString(),
-          request.type,
+          request.formattedDateTime || formatDateTime(request.createdAt || request.time),
+          formatType(request),
           request.status,
           request.description
         ])
@@ -200,7 +332,8 @@ const AdminDashboard = () => {
         requests.map(request => [
           period,
           request.studentName,
-          request.type,
+          request.formattedDateTime || formatDateTime(request.createdAt || request.time),
+          formatType(request),
           request.status,
           request.description
         ])
@@ -211,7 +344,7 @@ const AdminDashboard = () => {
         requests.map(request => [
           type,
           request.studentName,
-          request.createdAt?.toDate().toLocaleDateString(),
+          request.formattedDateTime || formatDateTime(request.createdAt || request.time),
           request.status,
           request.description
         ])
@@ -219,9 +352,9 @@ const AdminDashboard = () => {
     } else {
       // All requests
       tableData = data.map(request => [
-        request.createdAt?.toDate().toLocaleDateString(),
+        formatDateTime(request.createdAt || request.time),
         request.studentName,
-        request.type,
+        formatType(request),
         request.status,
         request.description
       ]);
@@ -240,27 +373,28 @@ const AdminDashboard = () => {
 
     // Define table columns based on report type
     const columns = reportType === 'student' ? 
-      ['Student', 'Date', 'Type', 'Status', 'Description'] :
+      ['Student', 'Date & Time', 'Type', 'Status', 'Description'] :
       reportType === 'monthly' || reportType === 'weekly' ?
-      ['Period', 'Student', 'Type', 'Status', 'Description'] :
+      ['Period', 'Student', 'Date & Time', 'Type', 'Status', 'Description'] :
       reportType === 'type' ?
-      ['Type', 'Student', 'Date', 'Status', 'Description'] :
-      ['Date', 'Student', 'Type', 'Status', 'Description'];
+      ['Type', 'Student', 'Date & Time', 'Status', 'Description'] :
+      ['Date & Time', 'Student', 'Type', 'Status', 'Description'];
 
-    // Generate table
-    doc.autoTable({
+    // Generate table 
+    autoTable(doc, {
       head: [columns],
       body: tableData,
       startY: 40,
       theme: 'grid',
-      headStyles: { fillColor: [0, 123, 255] },
+      headStyles: { fillColor: [147, 51, 234] },
       styles: { fontSize: 8 },
       columnStyles: {
-        0: { cellWidth: 30 },
-        1: { cellWidth: 30 },
+        0: { cellWidth: 25 },
+        1: { cellWidth: 25 },
         2: { cellWidth: 30 },
-        3: { cellWidth: 30 },
-        4: { cellWidth: 'auto' }
+        3: { cellWidth: 20 },
+        4: { cellWidth: 20 },
+        5: { cellWidth: 'auto' }
       }
     });
 
@@ -271,7 +405,10 @@ const AdminDashboard = () => {
   if (loading) {
     return (
       <div className="admin-dashboard">
-        <div className="loading">Loading maintenance requests...</div>
+        <div className="loading-container">
+          <div className="loading-spinner"></div>
+          <p>Loading dashboard...</p>
+        </div>
       </div>
     );
   }
@@ -279,9 +416,9 @@ const AdminDashboard = () => {
   if (error) {
     return (
       <div className="admin-dashboard">
-        <div className="error">
-          {error}
-          <button onClick={fetchMaintenanceRequests} className="retry-button">
+        <div className="error-container">
+          <p className="error-message">{error}</p>
+          <button onClick={fetchAdminProfile} className="retry-button">
             Retry
           </button>
         </div>
@@ -291,72 +428,218 @@ const AdminDashboard = () => {
 
   return (
     <div className="admin-dashboard">
-      <h1>Admin Dashboard</h1>
-      
-      <div className="report-controls">
-        <select 
-          value={reportType} 
-          onChange={(e) => setReportType(e.target.value)}
-        >
-          <option value="all">All Requests</option>
-          <option value="student">Student-wise Report</option>
-          <option value="monthly">Monthly Report</option>
-          <option value="weekly">Weekly Report</option>
-          <option value="type">Type-wise Report</option>
-        </select>
-
-        <div className="date-range">
-          <input
-            type="date"
-            value={dateRange.start}
-            onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-          />
-          <input
-            type="date"
-            value={dateRange.end}
-            onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-          />
-        </div>
-
-        <div className="export-buttons">
-          <button onClick={() => exportToExcel(generateReport(reportType))}>
-            Export to Excel
+      {/* Header */}
+      <header className="dashboard-header">
+        <h1 className="dashboard-title">RoomResQ Admin</h1>
+        
+        <div className="profile-container">
+          <button
+            onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+            className="profile-button"
+          >
+            <div className="profile-info">
+              <div className="avatar">
+                {profileData?.name?.charAt(0) || user?.displayName?.charAt(0) || 'A'}
+              </div>
+              <div className="user-details">
+                <div className="user-name">
+                  {profileData?.name || user?.displayName || 'Admin'}
+                </div>
+                <div className="user-email">
+                  {profileData?.email || user?.email}
+                </div>
+              </div>
+            </div>
+            <span className="dropdown-arrow">▼</span>
           </button>
-          <button onClick={() => exportToPDF(generateReport(reportType))}>
-            Export to PDF
-          </button>
-        </div>
-      </div>
 
-      <div className="requests-table">
-        <table>
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Student</th>
-              <th>Type</th>
-              <th>Status</th>
-              <th>Description</th>
-            </tr>
-          </thead>
-          <tbody>
-            {maintenanceRequests.length === 0 ? (
-              <tr>
-                <td colSpan="5" className="no-data">No maintenance requests found</td>
-              </tr>
-            ) : (
-              maintenanceRequests.map((request) => (
-                <tr key={request.id}>
-                  <td>{request.createdAt?.toDate().toLocaleDateString()}</td>
-                  <td>{request.studentName}</td>
-                  <td>{request.type}</td>
-                  <td>{request.status}</td>
-                  <td>{request.description}</td>
-                </tr>
-              ))
+          <AnimatePresence>
+            {isProfileMenuOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="profile-dropdown"
+              >
+                {profileData && (
+                  <div className="profile-details">
+                    <div className="profile-avatar-container">
+                      <div className="profile-avatar-large">
+                        {profileData.name?.charAt(0) || user?.displayName?.charAt(0) || 'A'}
+                      </div>
+                    </div>
+                    <div className="profile-info-row">
+                      <strong>Name:</strong> {profileData.name}
+                    </div>
+                    <div className="profile-info-row">
+                      <strong>Email:</strong> {profileData.email}
+                    </div>
+                    <div className="profile-info-row">
+                      <strong>Hostel:</strong> {profileData.hostelType}
+                    </div>
+                    <div className="profile-info-row">
+                      <strong>Block:</strong> {profileData.block}
+                    </div>
+                  </div>
+                )}
+                <div className="profile-actions">
+                  <button className="profile-action-button">
+                    Logout
+                  </button>
+                </div>
+              </motion.div>
             )}
-          </tbody>
-        </table>
+          </AnimatePresence>
+        </div>
+      </header>
+
+      <div className="dashboard-layout">
+        {/* Sidebar Navigation */}
+        <nav className="dashboard-sidebar">
+          <Link
+            to="/admin/dashboard"
+            className={`sidebar-link ${isActive('/admin/dashboard') ? 'active' : ''}`}
+          >
+            Dashboard
+          </Link>
+          <Link
+            to="/admin/requests"
+            className={`sidebar-link ${isActive('/admin/requests') ? 'active' : ''}`}
+          >
+            Maintenance Requests
+          </Link>
+          <Link
+            to="/admin/users"
+            className={`sidebar-link ${isActive('/admin/users') ? 'active' : ''}`}
+          >
+            Manage Users
+          </Link>
+        </nav>
+
+        {/* Main Content */}
+        <main className="dashboard-main">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            {/* Stats Grid */}
+            <div className="stats-grid">
+              <div className="stat-card">
+                <h3>Total Requests</h3>
+                <p className="stat-value primary">
+                  {maintenanceRequests.length}
+                </p>
+              </div>
+              <div className="stat-card">
+                <h3>Pending</h3>
+                <p className="stat-value pending">
+                  {maintenanceRequests.filter(r => r.status === 'pending').length}
+                </p>
+              </div>
+              <div className="stat-card">
+                <h3>In Progress</h3>
+                <p className="stat-value in-progress">
+                  {maintenanceRequests.filter(r => r.status === 'in-progress').length}
+                </p>
+              </div>
+              <div className="stat-card">
+                <h3>Completed</h3>
+                <p className="stat-value completed">
+                  {maintenanceRequests.filter(r => r.status === 'completed').length}
+                </p>
+              </div>
+            </div>
+
+            {/* Report Controls */}
+            <div className="report-controls">
+              <select 
+                value={reportType} 
+                onChange={(e) => setReportType(e.target.value)}
+                className="report-select"
+              >
+                <option value="all">All Requests</option>
+                <option value="student">Student-wise Report</option>
+                <option value="monthly">Monthly Report</option>
+                <option value="weekly">Weekly Report</option>
+                <option value="type">Type-wise Report</option>
+              </select>
+
+              <div className="date-range">
+                <input
+                  type="date"
+                  value={dateRange.start}
+                  onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
+                  className="date-input"
+                />
+                <input
+                  type="date"
+                  value={dateRange.end}
+                  onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
+                  className="date-input"
+                />
+              </div>
+
+              <div className="export-buttons">
+                <button 
+                  onClick={() => exportToExcel(generateReport(reportType))}
+                  className="export-button"
+                >
+                  Export to Excel
+                </button>
+                <button 
+                  onClick={() => exportToPDF(generateReport(reportType))}
+                  className="export-button"
+                >
+                  Export to PDF
+                </button>
+              </div>
+            </div>
+
+            {/* Requests Table */}
+            <div className="requests-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Student</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Description</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {maintenanceRequests.length === 0 ? (
+                    <tr>
+                      <td colSpan="6" className="no-data">No maintenance requests found</td>
+                    </tr>
+                  ) : (
+                    maintenanceRequests.map((request) => (
+                      <tr key={request.id}>
+                        <td>{formatDateTime(request.createdAt || request.time)}</td>
+                        <td>{request.studentName || 'N/A'}</td>
+                        <td>{formatType(request)}</td>
+                        <td>
+                          <span className={`status-badge status-${request.status}`}>
+                            {request.status || 'pending'}
+                          </span>
+                        </td>
+                        <td>{request.description || 'No description'}</td>
+                        <td>
+                          <div className="action-buttons">
+                            <button className="action-button view">View</button>
+                            <button className="action-button edit">Update</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </motion.div>
+        </main>
       </div>
     </div>
   );
